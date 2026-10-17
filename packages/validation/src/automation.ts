@@ -97,7 +97,12 @@ export const templateSchema = z
 export type TemplateInput = z.input<typeof templateSchema>;
 
 export const templatePreviewSchema = z
-  .object({ subjectTemplate: z.string().max(500), htmlBody: z.string().max(50000), matterId: uuidSchema.optional() })
+  .object({
+    audience: z.enum(['client', 'internal']).default('internal'),
+    subjectTemplate: z.string().max(500),
+    htmlBody: z.string().max(50000),
+    matterId: uuidSchema.optional(),
+  })
   .strict();
 
 export const sendEmailSchema = z

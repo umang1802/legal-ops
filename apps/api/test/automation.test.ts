@@ -50,7 +50,7 @@ describe('automations: hearing reminders (pilot test 2)', () => {
     await run(new Date());
     // 7-days-before is already in the past for a hearing 5 days out, so it isn't planned late.
     const planned = (await pool.query(`SELECT w.system_key, sa.run_at FROM scheduled_actions sa JOIN workflows w ON w.id = sa.workflow_id WHERE sa.status = 'scheduled' ORDER BY sa.run_at`)).rows;
-    expect(planned.map((p) => p.system_key)).toEqual(['hearing_3d_team', 'hearing_1d_client', 'hearing_morning_lead']);
+    expect(planned.map((p) => p.system_key)).toEqual(['hearing_3d_team', 'hearing_1d_client', 'hearing_1d_team', 'hearing_morning_client', 'hearing_morning_lead']);
     expect(planned[1].run_at.toISOString()).toBe(ist(addDays(date, -1), '09:00').toISOString());
 
     await run(ist(addDays(date, -1), '08:59'));
@@ -82,7 +82,7 @@ describe('automations: hearing reminders (pilot test 2)', () => {
     const rows = (await pool.query(`SELECT status, cancel_reason, payload->>'anchor' AS anchor FROM scheduled_actions WHERE target_id = $1`, [h.body.data.id])).rows;
     expect(rows.filter((r) => r.status === 'cancelled').every((r) => r.cancel_reason === 'Hearing rescheduled')).toBe(true);
     expect(rows.filter((r) => r.status === 'scheduled').every((r) => r.anchor === addDays(today, 10))).toBe(true);
-    expect(rows.filter((r) => r.status === 'scheduled')).toHaveLength(4); // 7d, 3d, 1d, morning
+    expect(rows.filter((r) => r.status === 'scheduled')).toHaveLength(6); // 7d, 3d, 1d client, 1d team, morning client, morning lead
 
     // The old "day before" moment passes quietly.
     await run(ist(addDays(today, 3), '09:30'));
@@ -143,6 +143,183 @@ describe('automations: hearing outcome (pilot test 3)', () => {
     await run(new Date());
     expect(email.to('raj@client.test').filter((m) => /next/i.test(m.text))).toHaveLength(1);
     expect((await post(l1, `/notifications/${held.id}/approve`)).status).toBe(409);
+  });
+});
+
+describe('automations: what the client is told (LegalForgeX T1)', () => {
+  const complete = (s: Session, id: string, body: object) => post(s, `/hearings/${id}/complete`, body);
+
+  it('outcome email carries the client summary, never the internal note', async () => {
+    const { owner, main, today, email, run } = await setup();
+    const h = await post(owner, '/hearings', { caseId: main.caseId, scheduledDate: today });
+    await complete(owner, h.body.data.id, {
+      result: 'adjourned',
+      outcome: 'SECRET-NOTE judge unconvinced',
+      clientSummary: 'The court gave the other side time to reply.',
+      nextHearingDate: addDays(today, 12),
+    });
+    await run(new Date());
+    const [m] = email.to('raj@client.test');
+    expect(m!.text).toContain('The court gave the other side time to reply.');
+    expect(m!.text).not.toContain('SECRET-NOTE');
+    expect(m!.html).not.toContain('SECRET-NOTE');
+  });
+
+  it('with no client summary, the client gets the neutral line', async () => {
+    const { owner, main, today, email, run } = await setup();
+    const h = await post(owner, '/hearings', { caseId: main.caseId, scheduledDate: today });
+    await complete(owner, h.body.data.id, { result: 'adjourned', outcome: 'SECRET-NOTE', clientSummary: '  ', nextHearingDate: addDays(today, 12) });
+    await run(new Date());
+    const [m] = email.to('raj@client.test');
+    expect(m!.text).toMatch(/The hearing on \d{1,2} \w{3} \d{4} was adjourned\./);
+    expect(m!.text).not.toContain('SECRET-NOTE');
+  });
+
+  it('day-before client reminder includes the last hearing update; team reminder also has the internal note', async () => {
+    const { owner, main, today, email, run } = await setup();
+    const first = await post(owner, '/hearings', { caseId: main.caseId, scheduledDate: today });
+    const next = addDays(today, 6);
+    await complete(owner, first.body.data.id, {
+      result: 'adjourned',
+      outcome: 'SECRET-NOTE push settlement',
+      clientSummary: 'Reply to be filed by the other side.',
+      nextHearingDate: next,
+    });
+    await run(new Date());
+    await run(ist(addDays(next, -1), '17:01'));
+    const clientReminder = email.to('raj@client.test').find((m) => /reminder/i.test(m.subject))!;
+    expect(clientReminder.text).toContain('Update from the last hearing');
+    expect(clientReminder.text).toContain('Reply to be filed by the other side.');
+    expect(clientReminder.text).not.toContain('SECRET-NOTE');
+    const teamReminder = email.to('clerk@a.test').at(-1)!;
+    expect(teamReminder.text).toContain('SECRET-NOTE push settlement');
+    expect(teamReminder.text).toContain('Reply to be filed by the other side.');
+  });
+
+  it('first hearing: reminders carry no last-update text at all', async () => {
+    const { owner, main, today, email, run } = await setup();
+    const date = addDays(today, 3);
+    await post(owner, '/hearings', { caseId: main.caseId, scheduledDate: date });
+    await run(new Date());
+    await run(ist(addDays(date, -1), '09:01'));
+    const [m] = email.to('raj@client.test');
+    expect(m!.text).not.toMatch(/last hearing/i);
+  });
+
+  it('legacy override: a client template row still containing {{hearing.outcome}} renders it blank', async () => {
+    const { owner, main, today, firm, email, run } = await setup();
+    await pool.query(
+      `INSERT INTO email_templates (organization_id, template_key, name, event_type, audience, subject_template, html_body)
+       VALUES ($1, 'hearing_outcome_client', 'Mine', 'HEARING_COMPLETED', 'client', 'Update', '<p>Note: {{hearing.outcome}}</p><p>{{hearing.client_summary}}</p>')`,
+      [firm.orgId],
+    );
+    const h = await post(owner, '/hearings', { caseId: main.caseId, scheduledDate: today });
+    await complete(owner, h.body.data.id, { result: 'adjourned', outcome: 'SECRET-NOTE', clientSummary: 'Reply awaited.', nextHearingDate: addDays(today, 9) });
+    await run(new Date());
+    const [m] = email.to('raj@client.test');
+    expect(m!.text).toContain('Reply awaited.');
+    expect(m!.text).not.toContain('SECRET-NOTE');
+  });
+
+  it('a firm cannot save a client template that uses a team-only variable', async () => {
+    const { owner } = await setup();
+    const res = await post(owner, '/email-templates', {
+      templateKey: 'hearing_outcome_client',
+      name: 'Mine',
+      audience: 'client',
+      subjectTemplate: 'Update',
+      htmlBody: '<p>{{hearing.outcome}}</p>',
+    });
+    expect(res.status).toBe(422);
+    expect(res.body.error.message).toMatch(/team-only/i);
+    const ok = await post(owner, '/email-templates', {
+      templateKey: 'my_internal_note',
+      name: 'Team',
+      audience: 'internal',
+      subjectTemplate: 'Note',
+      htmlBody: '<p>{{hearing.outcome}}</p>',
+    });
+    expect(ok.status).toBe(201);
+  });
+
+  it('approval mode: the held client message contains the summary, not the internal note', async () => {
+    const { owner, main, today, run } = await setup();
+    await run(new Date());
+    await pool.query(`UPDATE workflows SET requires_approval = true WHERE system_key = 'hearing_outcome_client'`);
+    const h = await post(owner, '/hearings', { caseId: main.caseId, scheduledDate: today });
+    await complete(owner, h.body.data.id, { result: 'adjourned', outcome: 'SECRET-NOTE', clientSummary: 'Reply awaited.', nextHearingDate: addDays(today, 9) });
+    await run(new Date());
+    const held = (await pool.query(`SELECT body_html, body_text FROM notifications WHERE status = 'awaiting_approval'`)).rows[0];
+    expect(held.body_text).toContain('Reply awaited.');
+    expect(held.body_text).not.toContain('SECRET-NOTE');
+    expect(held.body_html).not.toContain('SECRET-NOTE');
+  });
+
+  it('reminder matrix: lawyer and client are each reminded the day before and on the day', async () => {
+    const { owner, main, today, email, run } = await setup();
+    const date = addDays(today, 5);
+    await post(owner, '/hearings', { caseId: main.caseId, scheduledDate: date, startTime: '11:00' });
+    await run(new Date());
+    await run(ist(addDays(date, -1), '09:01'));
+    expect(email.to('raj@client.test')).toHaveLength(1); // day before, 9 am
+    const leadBefore = email.to('l1@a.test').length;
+    await run(ist(addDays(date, -1), '17:01'));
+    expect(email.to('l1@a.test').length).toBe(leadBefore + 1); // day before, 5 pm, team
+    await run(ist(date, '07:31'));
+    const today_ = email.to('raj@client.test');
+    expect(today_).toHaveLength(2);
+    expect(today_[1]!.subject).toMatch(/^Today:/);
+    await run(ist(date, '08:01'));
+    expect(email.to('l1@a.test').length).toBe(leadBefore + 2); // on the day, 8 am, lead
+  });
+
+  it('new reminders also cover hearings already on the calendar when a firm first receives them', async () => {
+    const { owner, main, today, firm, run } = await setup();
+    const h = await post(owner, '/hearings', { caseId: main.caseId, scheduledDate: addDays(today, 5) });
+    await run(new Date());
+    // Simulate a firm seeded before this release: the two new recipes don't exist yet.
+    const NEW = `('hearing_1d_team', 'hearing_morning_client')`;
+    await pool.query(`DELETE FROM scheduled_actions WHERE workflow_id IN (SELECT id FROM workflows WHERE system_key IN ${NEW})`);
+    await pool.query(`DELETE FROM workflows WHERE system_key IN ${NEW}`);
+    await pool.query(
+      `UPDATE organizations SET settings = jsonb_set(settings, '{seededWorkflowKeys}', (settings->'seededWorkflowKeys') - 'hearing_1d_team' - 'hearing_morning_client') WHERE id = $1`,
+      [firm.orgId],
+    );
+    // The firm's next event (any) seeds the new recipes.
+    await post(owner, '/hearings', { caseId: main.caseId, scheduledDate: addDays(today, 20) });
+    await run(new Date());
+    const planned = (
+      await pool.query(
+        `SELECT w.system_key FROM scheduled_actions sa JOIN workflows w ON w.id = sa.workflow_id WHERE sa.target_id = $1 AND sa.status = 'scheduled'`,
+        [h.body.data.id],
+      )
+    ).rows.map((r) => r.system_key as string);
+    expect(planned).toEqual(expect.arrayContaining(['hearing_1d_team', 'hearing_morning_client']));
+    expect(planned.filter((k) => k === 'hearing_1d_client')).toHaveLength(1); // nothing re-planned twice
+  });
+
+  it('a reschedule that delivers the new reminders plans them against the new date', async () => {
+    const { owner, main, today, firm, run } = await setup();
+    const h = await post(owner, '/hearings', { caseId: main.caseId, scheduledDate: addDays(today, 5) });
+    await run(new Date());
+    const NEW = `('hearing_1d_team', 'hearing_morning_client')`;
+    await pool.query(`DELETE FROM scheduled_actions WHERE workflow_id IN (SELECT id FROM workflows WHERE system_key IN ${NEW})`);
+    await pool.query(`DELETE FROM workflows WHERE system_key IN ${NEW}`);
+    await pool.query(
+      `UPDATE organizations SET settings = jsonb_set(settings, '{seededWorkflowKeys}', (settings->'seededWorkflowKeys') - 'hearing_1d_team' - 'hearing_morning_client') WHERE id = $1`,
+      [firm.orgId],
+    );
+    await owner.agent.patch(`/api/v1/hearings/${h.body.data.id}`).set('X-CSRF-Token', owner.csrf).send({ scheduledDate: addDays(today, 9) });
+    await run(new Date());
+    const planned = (
+      await pool.query(
+        `SELECT w.system_key, sa.payload->>'anchor' AS anchor FROM scheduled_actions sa JOIN workflows w ON w.id = sa.workflow_id
+         WHERE sa.target_id = $1 AND sa.status = 'scheduled' AND w.system_key IN ${NEW}`,
+        [h.body.data.id],
+      )
+    ).rows;
+    expect(planned).toHaveLength(2);
+    expect(planned.every((r) => r.anchor === addDays(today, 9))).toBe(true);
   });
 });
 
@@ -247,7 +424,7 @@ describe('automations: settings API', () => {
     const { owner, main, today } = await setup();
     const list = await owner.agent.get('/api/v1/workflows');
     expect(list.status).toBe(200);
-    expect(list.body.data).toHaveLength(13);
+    expect(list.body.data).toHaveLength(15);
     const dayBefore = list.body.data.find((w: { systemKey: string }) => w.systemKey === 'hearing_1d_client');
 
     await post(owner, '/hearings', { caseId: main.caseId, scheduledDate: addDays(today, 6) });

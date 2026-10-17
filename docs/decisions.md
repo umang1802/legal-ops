@@ -93,3 +93,14 @@ Decisions that override or clarify `prd/`. When the PRD and this file disagree, 
   - Clerks can record them (`matters.create`); they're visible to anyone who can see the matter.
   - A billed expense is locked to its invoice.
   - Amounts change only by void + re-record. Expenses are never deleted (DB trigger).
+
+## D-013 · Client-facing hearing text and once-per-key automation defaults (2026-10-17)
+
+(D-012, the Postgres-polling worker, is still to be written up; LegalForgeX Track 6.)
+
+- `hearings.outcome` is the team's internal note. `hearings.client_summary` is the only hearing text a client may see; blank means a neutral line ("The hearing on {date} was adjourned/held.").
+- Template variables flagged `internalOnly` in `@legalops/types` are stripped before any client-bound render (`varsForAudience`) and rejected when saving a client template. A client recipient is always rendered as client audience.
+- Migration 0006 rewrote firm client-template overrides from `{{hearing.outcome}}` to `{{hearing.client_summary}}`; existing outcomes were not copied into `client_summary`.
+- Default automations are offered once per key (`settings.seededWorkflowKeys`): new defaults reach existing firms; deleted ones never return. Replaces the one-shot `defaultWorkflowsSeeded` flag.
+- When a firm receives new hearing recipes, they are planned against every upcoming scheduled hearing (`planUpcomingHearings`, run after the event's own planning so a reschedule's cancel-and-replan isn't undone).
+- Deferred: editing a hearing's client summary after it is saved. A wrong summary is emailed at once and repeated in the next hearing's reminders; correcting it needs an edit path with an audit entry (later track).

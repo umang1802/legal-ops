@@ -38,6 +38,7 @@ type HearingRow = {
   hearing_type: string | null;
   status: HearingStatus;
   outcome: string | null;
+  client_summary: string | null;
   next_hearing_date: string | null;
   next_hearing_id: string | null;
   previous_hearing_id: string | null;
@@ -54,7 +55,7 @@ const HEARING_SELECT = sql`
   h.id, h.case_id, cs.case_number, cs.title AS case_title, m.id AS matter_id, m.title AS matter_title,
   cl.id AS client_id, cl.name AS client_name, ct.name AS court_name,
   h.scheduled_date::text AS scheduled_date, to_char(h.start_time, 'HH24:MI') AS start_time,
-  to_char(h.end_time, 'HH24:MI') AS end_time, h.courtroom, h.bench_judge, h.hearing_type, h.status, h.outcome,
+  to_char(h.end_time, 'HH24:MI') AS end_time, h.courtroom, h.bench_judge, h.hearing_type, h.status, h.outcome, h.client_summary,
   h.next_hearing_date::text AS next_hearing_date, h.next_hearing_id, h.previous_hearing_id, h.notes,
   lead.user_id AS lead_user_id, lu.first_name AS lead_first_name, lu.last_name AS lead_last_name,
   (h.status = 'scheduled' AND h.scheduled_date < (now() AT TIME ZONE o.timezone)::date) AS pending_outcome,
@@ -87,6 +88,7 @@ export const toHearingDto = (r: HearingRow): HearingDto => ({
   hearingType: r.hearing_type,
   status: r.status,
   outcome: r.outcome,
+  clientSummary: r.client_summary,
   nextHearingDate: r.next_hearing_date,
   nextHearingId: r.next_hearing_id,
   previousHearingId: r.previous_hearing_id,
@@ -393,7 +395,7 @@ export async function completeHearing(
 
     await query(
       tx,
-      sql`UPDATE hearings SET status = ${input.result}, outcome = ${input.outcome},
+      sql`UPDATE hearings SET status = ${input.result}, outcome = ${input.outcome}, client_summary = ${input.clientSummary ?? null},
             notes = COALESCE(${input.notes ?? null}, notes), next_hearing_date = ${input.nextHearingDate ?? null},
             completed_at = now(), completed_by = ${ctx.userId}
           WHERE id = ${id}`,

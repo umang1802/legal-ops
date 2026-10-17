@@ -121,7 +121,7 @@ async function cancelPending(db: Db, organizationId: string, targetType: string,
  * Plans every active workflow for an event (PRD §9/§10). Writes scheduled_actions only; nothing is
  * sent here. Safe to replay: idempotency keys include workflow, action, target and anchor date.
  */
-export async function planForEvent(deps: Deps, db: Db, event: OutboxEvent, now: Date): Promise<number> {
+export async function planForEvent(deps: Deps, db: Db, event: OutboxEvent, now: Date, onlyWorkflowIds?: string[]): Promise<number> {
   const target = targetOf(event);
   if (!target) return 0;
   const org = event.organization_id;
@@ -134,10 +134,12 @@ export async function planForEvent(deps: Deps, db: Db, event: OutboxEvent, now: 
 
   // A rescheduled hearing re-plans the "hearing scheduled" workflows against the new date.
   const trigger = (event.event_type === 'HEARING_CHANGED' ? 'HEARING_SCHEDULED' : event.event_type) as WorkflowTrigger;
-  const workflows = await query<WorkflowRow>(
-    db,
-    sql`SELECT * FROM workflows WHERE organization_id = ${org} AND trigger_type = ${trigger} AND is_active ORDER BY created_at`,
-  );
+  const workflows = (
+    await query<WorkflowRow>(
+      db,
+      sql`SELECT * FROM workflows WHERE organization_id = ${org} AND trigger_type = ${trigger} AND is_active ORDER BY created_at`,
+    )
+  ).filter((wf) => !onlyWorkflowIds || onlyWorkflowIds.includes(wf.id));
   if (workflows.length === 0) return 0;
 
   const context = await buildContext(db, org, { ...target.refs, ...refsFromPayload(event.payload) }, now, deps.env.APP_URL);
@@ -161,6 +163,40 @@ export async function planForEvent(deps: Deps, db: Db, event: OutboxEvent, now: 
       );
       planned += rows.length;
     }
+  }
+  return planned;
+}
+
+/**
+ * Hearing recipes a firm receives after its hearings were planned (new defaults, D-013) also cover
+ * the hearings already on its calendar. Only the given recipes are planned; idempotency keys make
+ * this safe to repeat.
+ */
+export async function planUpcomingHearings(deps: Deps, db: Db, source: OutboxEvent, now: Date, systemKeys: string[]): Promise<number> {
+  const org = source.organization_id;
+  const ids = (
+    await query<{ id: string }>(
+      db,
+      sql`SELECT id FROM workflows WHERE organization_id = ${org} AND system_key = ANY(${systemKeys}) AND trigger_type = 'HEARING_SCHEDULED'`,
+    )
+  ).map((w) => w.id);
+  if (!ids.length) return 0;
+  const hearings = await query<{ id: string; case_id: string; matter_id: string }>(
+    db,
+    sql`SELECT h.id, h.case_id, c.matter_id FROM hearings h
+        JOIN cases c ON c.id = h.case_id JOIN organizations o ON o.id = h.organization_id
+        WHERE h.organization_id = ${org} AND h.status = 'scheduled'
+          AND h.scheduled_date >= ((${now.toISOString()}::timestamptz AT TIME ZONE o.timezone)::date)`,
+  );
+  let planned = 0;
+  for (const h of hearings) {
+    planned += await planForEvent(
+      deps,
+      db,
+      { ...source, event_type: 'HEARING_SCHEDULED', aggregate_type: 'hearing', aggregate_id: h.id, payload: { hearingId: h.id, caseId: h.case_id, matterId: h.matter_id } },
+      now,
+      ids,
+    );
   }
   return planned;
 }

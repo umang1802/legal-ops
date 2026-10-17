@@ -214,8 +214,10 @@ export type EmailTemplateDto = {
   updatedAt: string;
 };
 
+export type TemplateVariable = { name: string; example: string; /** Team-only: never rendered in client emails. */ internalOnly?: true };
+
 /** Variables the editor offers (rendered server-side, HTML-escaped). */
-export const TEMPLATE_VARIABLES: { group: string; vars: { name: string; example: string }[] }[] = [
+export const TEMPLATE_VARIABLES: { group: string; vars: TemplateVariable[] }[] = [
   { group: 'Firm', vars: [{ name: 'firm.name', example: 'Sharma & Associates' }, { name: 'firm.email', example: 'office@sharma.example.com' }, { name: 'firm.phone', example: '+91 11 4000 0000' }] },
   { group: 'Client', vars: [{ name: 'client.name', example: 'Raj Sharma' }] },
   { group: 'Matter', vars: [{ name: 'matter.title', example: 'Sharma v ABC' }, { name: 'matter.reference', example: 'SA-2026-001' }] },
@@ -226,8 +228,19 @@ export const TEMPLATE_VARIABLES: { group: string; vars: { name: string; example:
       { name: 'hearing.date', example: 'Sat, 10 Oct 2026' },
       { name: 'hearing.time', example: '10:30 am' },
       { name: 'hearing.courtroom', example: '12' },
-      { name: 'hearing.outcome', example: 'Respondent sought time to file reply' },
+      { name: 'hearing.client_summary', example: 'The court gave the other side time to file a reply.' },
+      { name: 'hearing.outcome', example: 'Judge unconvinced on limitation; consider settlement', internalOnly: true },
       { name: 'hearing.next_date', example: 'Thu, 22 Oct 2026' },
+    ],
+  },
+  {
+    group: 'Last hearing',
+    vars: [
+      { name: 'previous.date', example: '10 Oct 2026' },
+      { name: 'previous.client_update', example: 'The court gave the other side time to file a reply.' },
+      { name: 'previous.client_update_phrase', example: 'Update from the last hearing (10 Oct 2026): The court gave the other side time to file a reply.' },
+      { name: 'previous.internal_note', example: 'Judge unconvinced on limitation', internalOnly: true },
+      { name: 'previous.internal_note_phrase', example: 'Internal note from the last hearing: Judge unconvinced on limitation', internalOnly: true },
     ],
   },
   {
@@ -245,3 +258,6 @@ export const TEMPLATE_VARIABLES: { group: string; vars: { name: string; example:
   { group: 'Recipient', vars: [{ name: 'recipient.first_name', example: 'Meera' }] },
   { group: 'Manual update', vars: [{ name: 'custom.note', example: 'Please carry the original sale deed.' }] },
 ];
+
+/** Variables that must never appear in, or render into, a client email. */
+export const INTERNAL_ONLY_VARIABLES: readonly string[] = TEMPLATE_VARIABLES.flatMap((g) => g.vars.filter((v) => v.internalOnly).map((v) => v.name));

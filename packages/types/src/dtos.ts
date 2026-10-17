@@ -173,6 +173,8 @@ export type HearingDto = {
   hearingType: string | null;
   status: HearingStatus;
   outcome: string | null;
+  /** Client-facing summary of the hearing. `outcome` is the team's internal note and is never emailed to clients. */
+  clientSummary: string | null;
   nextHearingDate: string | null;
   nextHearingId: string | null;
   previousHearingId: string | null;

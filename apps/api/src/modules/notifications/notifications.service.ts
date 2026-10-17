@@ -11,6 +11,7 @@ import { matterVisible } from '../access/matter-scope.js';
 import { recordAudit } from '../audit/audit.service.js';
 import { issueInvitationToken, issuePasswordResetToken } from '../auth/auth.service.js';
 import { emitEvent } from '../outbox/outbox.service.js';
+import { varsForAudience, type Audience } from '../templates/audience.js';
 import { emailLayout, htmlToText, renderTemplate, sanitizeTemplateHtml } from '../templates/render.js';
 import { resolveTemplate } from '../templates/templates.service.js';
 import { addTimelineEvent } from '../timeline/timeline.service.js';
@@ -57,7 +58,9 @@ export async function createNotification(db: Db, appUrl: string, input: CreateNo
   if (!template) throw new Error(`Email template "${input.templateKey}" not found`);
 
   const context = await buildContext(db, input.organizationId, { ...input.refs, ...(input.recipient.type === 'client' ? { clientId: input.recipient.clientId } : {}) }, input.now, appUrl);
-  const vars: Record<string, Record<string, unknown>> = { ...context.vars, ...(input.extraVars ?? {}) };
+  // A client recipient is always rendered as client audience, whatever the template row says.
+  const audience: Audience = input.recipient.type === 'client' ? 'client' : (template.audience as Audience);
+  const vars: Record<string, Record<string, unknown>> = varsForAudience({ ...context.vars, ...(input.extraVars ?? {}) }, audience);
 
   // Recipient + consent.
   let destination: string | null = null;

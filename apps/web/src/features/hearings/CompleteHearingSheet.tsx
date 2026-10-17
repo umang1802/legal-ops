@@ -28,6 +28,7 @@ export function CompleteHearingSheet({
   const members = useMembers();
   const [result, setResult] = useState<'adjourned' | 'completed'>('adjourned');
   const [outcome, setOutcome] = useState('');
+  const [clientSummary, setClientSummary] = useState('');
   const [nextDate, setNextDate] = useState('');
   const [nextTime, setNextTime] = useState('');
   const [actions, setActions] = useState<Action[]>([]);
@@ -37,6 +38,7 @@ export function CompleteHearingSheet({
     if (!open) return;
     setResult('adjourned');
     setOutcome('');
+    setClientSummary('');
     setNextDate('');
     setNextTime('');
     setActions([]);
@@ -66,6 +68,7 @@ export function CompleteHearingSheet({
     const parsed = completeHearingSchema.safeParse({
       result,
       outcome,
+      clientSummary: clientSummary || null,
       nextHearingDate: nextDate || null,
       nextStartTime: nextTime || null,
       nextActions: actions
@@ -132,15 +135,25 @@ export function CompleteHearingSheet({
         </div>
 
         <TextAreaField
-          label="What happened"
+          label="Internal note (team only)"
+          hint="Never sent to the client."
           placeholder={
             result === 'adjourned'
-              ? 'e.g. Respondent sought time to file reply'
+              ? 'e.g. Respondent sought time; judge unconvinced on limitation'
               : 'e.g. Arguments heard, orders reserved'
           }
           value={outcome}
           onChange={(e) => setOutcome(e.target.value)}
           error={errors.outcome}
+        />
+        <TextAreaField
+          label="Update for client (optional)"
+          hint="Goes in the client's case-update email (sent when you give a next date) and their next hearing reminder. Leave blank for a neutral line."
+          placeholder="e.g. The court gave the other side time to file a reply."
+          maxLength={2000}
+          value={clientSummary}
+          onChange={(e) => setClientSummary(e.target.value)}
+          error={errors.clientSummary}
         />
         <div className="grid grid-cols-2 gap-3">
           <TextField

@@ -39,6 +39,11 @@ const timeText = (t: string | null | undefined) => {
   const [h, m] = t.split(':').map(Number);
   return `${((h! + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h! >= 12 ? 'pm' : 'am'}`;
 };
+type HearingText = { scheduled_date: string; status: string; client_summary: string | null };
+/** What a client may be told about a held hearing: the firm's summary, or a neutral line. */
+const clientUpdateText = (h: HearingText) =>
+  h.client_summary?.trim() ||
+  (h.status === 'adjourned' ? `The hearing on ${dateText(h.scheduled_date)} was adjourned.` : `The hearing on ${dateText(h.scheduled_date)} was held.`);
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
 
 /**
@@ -131,9 +136,9 @@ export async function buildContext(db: Db, organizationId: string, refs: Context
     }
   }
   if (r.hearingId) {
-    const h = await queryOne<{ case_id: string; status: string; scheduled_date: string; start_time: string | null; courtroom: string | null; hearing_type: string | null; outcome: string | null; next_hearing_date: string | null }>(
+    const h = await queryOne<{ case_id: string; status: string; scheduled_date: string; start_time: string | null; courtroom: string | null; hearing_type: string | null; outcome: string | null; client_summary: string | null; next_hearing_date: string | null }>(
       db,
-      sql`SELECT case_id, status, scheduled_date::text, to_char(start_time, 'HH24:MI') AS start_time, courtroom, hearing_type, outcome, next_hearing_date::text
+      sql`SELECT case_id, status, scheduled_date::text, to_char(start_time, 'HH24:MI') AS start_time, courtroom, hearing_type, outcome, client_summary, next_hearing_date::text
           FROM hearings WHERE id = ${r.hearingId} AND organization_id = ${organizationId}`,
     );
     if (h) {
@@ -147,12 +152,30 @@ export async function buildContext(db: Db, organizationId: string, refs: Context
         courtroom_phrase: h.courtroom ? `, court room ${h.courtroom}` : '',
         hearing_type: h.hearing_type ?? '',
         outcome: h.outcome ?? '',
+        client_summary: h.status === 'completed' || h.status === 'adjourned' ? clientUpdateText(h) : '',
         next_date: h.next_hearing_date ? dateText(h.next_hearing_date, true) : '',
         result: h.status,
         when: delta === 0 ? 'Today' : delta === 1 ? 'Tomorrow' : delta > 1 ? `In ${delta} days` : dateText(h.scheduled_date),
       };
       vars.links!.hearing = link(`/hearings/${r.hearingId}`);
       raw.hearing = { status: h.status, scheduled_date: h.scheduled_date };
+      // The most recent held hearing on the same case, for "last update" lines in reminders.
+      const prev = await queryOne<HearingText & { outcome: string | null }>(
+        db,
+        sql`SELECT scheduled_date::text, status, client_summary, outcome FROM hearings
+            WHERE case_id = ${h.case_id} AND organization_id = ${organizationId}
+              AND status IN ('completed', 'adjourned') AND scheduled_date < ${h.scheduled_date}
+            ORDER BY scheduled_date DESC, completed_at DESC NULLS LAST LIMIT 1`,
+      );
+      vars.previous = prev
+        ? {
+            date: dateText(prev.scheduled_date),
+            client_update: clientUpdateText(prev),
+            client_update_phrase: `Update from the last hearing (${dateText(prev.scheduled_date)}): ${clientUpdateText(prev)}`,
+            internal_note: prev.outcome ?? '',
+            internal_note_phrase: prev.outcome ? `Internal note from the last hearing: ${prev.outcome}` : '',
+          }
+        : { date: '', client_update: '', client_update_phrase: '', internal_note: '', internal_note_phrase: '' };
     }
   }
   if (r.caseId) {

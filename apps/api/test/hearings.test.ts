@@ -242,4 +242,45 @@ describe('hearings', () => {
     const res = await owner.agent.get('/api/v1/hearings').query({ from: today, until: addDays(today, 120) });
     expect(res.status).toBe(422);
   });
+  it('stores the client update separately from the internal note', async () => {
+    const { owner, main, today } = await practiceFixture(app);
+    const h = await owner.agent.post('/api/v1/hearings').set('X-CSRF-Token', owner.csrf).send({ caseId: main.caseId, scheduledDate: today });
+    const done = await owner.agent
+      .post(`/api/v1/hearings/${h.body.data.id}/complete`)
+      .set('X-CSRF-Token', owner.csrf)
+      .send({
+        result: 'adjourned',
+        outcome: 'Judge unconvinced on limitation; consider settlement',
+        clientSummary: '  The court gave the other side time to file a reply.  ',
+        nextHearingDate: addDays(today, 14),
+      });
+    expect(done.status).toBe(200);
+    expect(done.body.data.hearing).toMatchObject({
+      outcome: 'Judge unconvinced on limitation; consider settlement',
+      clientSummary: 'The court gave the other side time to file a reply.',
+    });
+    const got = await owner.agent.get(`/api/v1/hearings/${h.body.data.id}`);
+    expect(got.body.data.clientSummary).toBe('The court gave the other side time to file a reply.');
+  });
+
+  it('treats a whitespace-only client update as none', async () => {
+    const { owner, main, today } = await practiceFixture(app);
+    const h = await owner.agent.post('/api/v1/hearings').set('X-CSRF-Token', owner.csrf).send({ caseId: main.caseId, scheduledDate: today });
+    const done = await owner.agent
+      .post(`/api/v1/hearings/${h.body.data.id}/complete`)
+      .set('X-CSRF-Token', owner.csrf)
+      .send({ result: 'completed', outcome: 'Arguments heard', clientSummary: '   ' });
+    expect(done.status).toBe(200);
+    expect(done.body.data.hearing.clientSummary).toBeNull();
+  });
+
+  it('rejects a client update over 2000 characters', async () => {
+    const { owner, main, today } = await practiceFixture(app);
+    const h = await owner.agent.post('/api/v1/hearings').set('X-CSRF-Token', owner.csrf).send({ caseId: main.caseId, scheduledDate: today });
+    const res = await owner.agent
+      .post(`/api/v1/hearings/${h.body.data.id}/complete`)
+      .set('X-CSRF-Token', owner.csrf)
+      .send({ result: 'completed', outcome: 'Arguments heard', clientSummary: 'x'.repeat(2001) });
+    expect(res.status).toBe(422);
+  });
 });

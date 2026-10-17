@@ -4,7 +4,7 @@ import { sql } from '../../db/sql.js';
 import type { Deps } from '../../deps.js';
 import { createNotification, dueNotificationIds, sendNotification } from '../notifications/notifications.service.js';
 import { ensureDefaultsOnce } from './defaults.js';
-import { claimDueActions, executeScheduledAction, planForEvent, type OutboxEvent } from './engine.js';
+import { claimDueActions, executeScheduledAction, planForEvent, planUpcomingHearings, type OutboxEvent } from './engine.js';
 
 const MAX_EVENT_ATTEMPTS = 8;
 
@@ -44,9 +44,12 @@ async function handleSystemEvent(deps: Deps, db: Db, event: OutboxEvent, now: Da
 
 /** Plans everything one event causes, in one transaction with marking it processed. */
 export async function handleEvent(deps: Deps, db: Db, event: OutboxEvent, now: Date): Promise<number> {
-  await ensureDefaultsOnce(db, event.organization_id);
+  const added = await ensureDefaultsOnce(db, event.organization_id);
   await handleSystemEvent(deps, db, event, now);
-  return planForEvent(deps, db, event, now);
+  const planned = await planForEvent(deps, db, event, now);
+  // After planForEvent: a reschedule cancels this hearing's pending plans first, then re-plans them.
+  if (added.length) await planUpcomingHearings(deps, db, event, now, added);
+  return planned;
 }
 
 /**

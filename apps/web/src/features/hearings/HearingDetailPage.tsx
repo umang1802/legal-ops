@@ -105,7 +105,16 @@ export function HearingDetailPage() {
             <Card>
               <CardHeader title="Outcome" />
               <CardBody className="space-y-3 text-sm">
-                <p className="whitespace-pre-wrap">{h.outcome}</p>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted">Internal note</p>
+                  <p className="whitespace-pre-wrap">{h.outcome}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted">Update for client</p>
+                  <p className="whitespace-pre-wrap">
+                    {h.clientSummary ?? <span className="text-muted">None. Client emails use a neutral line.</span>}
+                  </p>
+                </div>
                 {h.nextHearingId ? (
                   <p>
                     Next date:{' '}

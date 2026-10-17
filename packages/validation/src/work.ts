@@ -57,6 +57,7 @@ export const completeHearingSchema = z
   .object({
     result: z.enum(['completed', 'adjourned']),
     outcome: z.string().trim().min(1, { error: 'Summarise what happened' }).max(5000),
+    clientSummary: nullableText(2000),
     nextHearingDate: isoDate.nullable().optional(),
     nextStartTime: nullableTime,
     notes: nullableText(5000),

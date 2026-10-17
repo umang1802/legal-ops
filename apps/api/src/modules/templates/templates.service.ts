@@ -10,6 +10,7 @@ import { iso } from '../../http/query-helpers.js';
 import { recordAudit } from '../audit/audit.service.js';
 import { buildContext } from '../notifications/context.js';
 import { createNotification } from '../notifications/notifications.service.js';
+import { internalOnlyUsed, varsForAudience, type Audience } from './audience.js';
 import { emailLayout, htmlToText, renderTemplate, sanitizeTemplateHtml, unknownVariables } from './render.js';
 
 /** Variables a template may use: the documented catalogue plus internal helpers used by system templates. */
@@ -80,10 +81,18 @@ export async function getTemplate(deps: Deps, ctx: TenantContext, id: string): P
   return toDto(row);
 }
 
-function validateBody(input: { subjectTemplate: string; htmlBody: string; textBody?: string | null | undefined }) {
+function validateBody(input: { audience?: Audience; subjectTemplate: string; htmlBody: string; textBody?: string | null | undefined }) {
   const unknown = [...new Set([...unknownVariables(input.subjectTemplate, KNOWN), ...unknownVariables(input.htmlBody, KNOWN), ...unknownVariables(input.textBody ?? '', KNOWN)])];
   if (unknown.length) {
     throw validationError(`Unknown variable${unknown.length > 1 ? 's' : ''}: ${unknown.map((u) => `{{${u}}}`).join(', ')}`, [{ path: 'htmlBody', message: 'Unknown variables' }]);
+  }
+  if (input.audience === 'client') {
+    const teamOnly = internalOnlyUsed(input.subjectTemplate, input.htmlBody, input.textBody);
+    if (teamOnly.length) {
+      throw validationError(`Team-only variable${teamOnly.length > 1 ? 's' : ''} can't be used in client emails: ${teamOnly.map((u) => `{{${u}}}`).join(', ')}`, [
+        { path: 'htmlBody', message: 'Team-only variables' },
+      ]);
+    }
   }
 }
 
@@ -136,7 +145,7 @@ export async function deleteTemplate(deps: Deps, ctx: TenantContext, id: string,
 }
 
 /** Preview with real data from a matter when given, otherwise the documented examples. */
-export async function previewTemplate(deps: Deps, ctx: TenantContext, input: { subjectTemplate: string; htmlBody: string; matterId?: string | undefined }) {
+export async function previewTemplate(deps: Deps, ctx: TenantContext, input: { audience?: Audience; subjectTemplate: string; htmlBody: string; matterId?: string | undefined }) {
   validateBody(input);
   const examples: Record<string, Record<string, unknown>> = {};
   for (const g of TEMPLATE_VARIABLES) for (const v of g.vars) {
@@ -144,7 +153,10 @@ export async function previewTemplate(deps: Deps, ctx: TenantContext, input: { s
     (examples[grp] ??= {})[key] = v.example;
   }
   const ctxVars = input.matterId ? (await buildContext(deps.pool, ctx.organizationId, { matterId: input.matterId }, new Date(), deps.env.APP_URL)).vars : {};
-  const vars = { ...examples, ...Object.fromEntries(Object.entries(ctxVars).map(([k, v]) => [k, { ...(examples[k] ?? {}), ...v }])) };
+  const vars = varsForAudience(
+    { ...examples, ...Object.fromEntries(Object.entries(ctxVars).map(([k, v]) => [k, { ...(examples[k] ?? {}), ...v }])) },
+    input.audience ?? 'internal',
+  );
   const firm = (vars.firm ?? {}) as { name: string; email: string | null; phone: string | null };
   const body = renderTemplate(sanitizeTemplateHtml(input.htmlBody), vars, 'html');
   return { subject: renderTemplate(input.subjectTemplate, vars, 'text'), html: emailLayout(body, firm), text: htmlToText(body) };
