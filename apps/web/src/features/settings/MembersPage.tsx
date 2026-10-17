@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { can, ROLE_LABELS, ROLES, type MemberDto, type Role } from '@legalops/types';
+import { ROLE_LABELS, ROLES, type MemberDto, type Role } from '@legalops/types';
 import {
   Alert,
   Badge,
@@ -19,7 +19,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import type { z } from 'zod';
 import { api, ApiError, applyFieldErrors } from '../../lib/api.js';
-import { useSession } from '../../lib/auth.js';
+import { canAct, useSession } from '../../lib/auth.js';
 import { initials } from '../../lib/format.js';
 import { MEMBERS_KEY } from '../../lib/hooks.js';
 
@@ -28,7 +28,7 @@ const roleOptions = (allowOwner: boolean) =>
 
 export function MembersPage() {
   const me = useSession();
-  const canManage = can(me.role, 'users.manage');
+  const canManage = canAct(me, 'users.manage');
   const [inviteOpen, setInviteOpen] = useState(false);
   const members = useQuery({
     queryKey: MEMBERS_KEY,

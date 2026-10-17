@@ -127,4 +127,18 @@ SELECT pg_temp.expect_fail($$INSERT INTO notifications (organization_id, channel
   VALUES ('a0000000-0000-0000-0000-000000000001', 'email', 'x', 'client', 'a1000000-0000-0000-0000-000000000001', 'sent')$$,
   'notification SENT with no provider message id');
 
+-- Platform realm (LegalForgeX T2)
+SELECT pg_temp.expect_fail($$UPDATE organizations SET status = 'deleted' WHERE id = 'a0000000-0000-0000-0000-000000000001'$$,
+  'organization status outside invited/active/suspended');
+INSERT INTO platform_admins (id, email, name, password_hash)
+  VALUES ('d0000000-0000-0000-0000-000000000001', 'ops@legalforgex.test', 'Ops', 'x');
+INSERT INTO platform_audit_logs (platform_admin_id, action, organization_id)
+  VALUES ('d0000000-0000-0000-0000-000000000001', 'firm.invited', 'a0000000-0000-0000-0000-000000000001');
+SELECT pg_temp.expect_fail($$UPDATE platform_audit_logs SET action = 'x'$$, 'updating platform audit');
+SELECT pg_temp.expect_fail($$DELETE FROM platform_audit_logs$$, 'deleting platform audit');
+SELECT pg_temp.expect_fail($$INSERT INTO invitations (organization_id, email, role, invited_by, invited_by_platform_admin_id, expires_at)
+  VALUES ('a0000000-0000-0000-0000-000000000001', 'x@y.test', 'owner', 'c0000000-0000-0000-0000-000000000001',
+          'd0000000-0000-0000-0000-000000000001', now() + interval '7 days')$$,
+  'invitation with both a firm inviter and a platform inviter');
+
 ROLLBACK;

@@ -1,3 +1,4 @@
+import type { OrganizationStatus } from './platform.js';
 import type { Permission } from './permissions.js';
 import type { Role } from './roles.js';
 
@@ -17,6 +18,8 @@ export type ApiErrorCode =
   | 'TOKEN_INVALID'
   | 'NOT_CONFIGURED'
   | 'DUPLICATE_WARNING'
+  | 'MFA_REQUIRED'
+  | 'FIRM_SUSPENDED'
   | 'INTERNAL_ERROR';
 
 export type ApiError = {
@@ -33,7 +36,7 @@ export type MembershipSummary = {
 
 export type MeResponse = {
   user: { id: string; email: string; firstName: string; lastName: string | null; emailVerified: boolean };
-  organization: { id: string; name: string; timezone: string; currency: string; taxMode: 'simple' | 'gst' };
+  organization: { id: string; name: string; timezone: string; currency: string; taxMode: 'simple' | 'gst'; status: OrganizationStatus };
   role: Role;
   permissions: readonly Permission[];
   memberships: MembershipSummary[];

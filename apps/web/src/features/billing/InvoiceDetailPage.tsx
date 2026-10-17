@@ -1,4 +1,4 @@
-import { can, INVOICE_DISPLAY_LABELS, PAYMENT_METHOD_LABELS, type InvoiceDetailDto } from '@legalops/types';
+import { INVOICE_DISPLAY_LABELS, PAYMENT_METHOD_LABELS, type InvoiceDetailDto } from '@legalops/types';
 import {
   Alert,
   Badge,
@@ -16,7 +16,7 @@ import { Ban, FileMinus, IndianRupee, Pencil, Printer, Send, Trash2 } from 'luci
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { api, ApiError } from '../../lib/api.js';
-import { useSession } from '../../lib/auth.js';
+import { canAct, useSession } from '../../lib/auth.js';
 import { formatDate } from '../../lib/format.js';
 import { formatINR, isZero } from '../../lib/money.js';
 import { INVOICE_TONE } from '../../lib/status.js';
@@ -70,7 +70,7 @@ export function InvoiceDetailPage() {
       <Alert tone="danger">Couldn’t load this invoice.</Alert>
     );
   const i = inv.data;
-  const manage = can(me.role, 'invoices.manage');
+  const manage = canAct(me, 'invoices.manage');
   const open = i.status === 'issued' && !isZero(i.amountDue);
 
   return (
@@ -142,7 +142,7 @@ export function InvoiceDetailPage() {
               </Button>
             </>
           ) : null}
-          {open && can(me.role, 'payments.record') ? (
+          {open && canAct(me, 'payments.record') ? (
             <Button icon={<IndianRupee className="size-4" />} onClick={() => setSheet('pay')}>
               Record payment
             </Button>

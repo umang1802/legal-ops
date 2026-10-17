@@ -1,4 +1,4 @@
-import { can, type InvoiceListItemDto } from '@legalops/types';
+import { type InvoiceListItemDto } from '@legalops/types';
 import {
   Alert,
   Button,
@@ -16,7 +16,7 @@ import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { BillingNav } from './BillingNav.js';
 import { api, qs } from '../../lib/api.js';
-import { useSession } from '../../lib/auth.js';
+import { canAct, useSession } from '../../lib/auth.js';
 import { useDebounced } from '../../lib/hooks.js';
 import { InvoiceRow } from './InvoiceRow.js';
 
@@ -49,7 +49,7 @@ export function InvoicesPage() {
       <PageHeader
         title="Invoices"
         actions={
-          can(me.role, 'invoices.manage') ? (
+          canAct(me, 'invoices.manage') ? (
             <Button icon={<FilePlus2 className="size-4" />} onClick={() => navigate('/invoices/new')}>
               New invoice
             </Button>

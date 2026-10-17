@@ -1,6 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
-  can,
   CASE_STATUS_LABELS,
   PARTY_SIDE_LABELS,
   PARTY_SIDES,
@@ -27,7 +26,7 @@ import { useForm } from 'react-hook-form';
 import { Link, useParams } from 'react-router';
 import { z } from 'zod';
 import { api, ApiError, qs } from '../../lib/api.js';
-import { useSession } from '../../lib/auth.js';
+import { canAct, useSession } from '../../lib/auth.js';
 import { formatDate, todayIn } from '../../lib/format.js';
 import { CASE_STATUS_TONE } from '../../lib/status.js';
 import { NotFound } from '../common/NotFound.js';
@@ -69,8 +68,8 @@ export function CaseDetailPage() {
     );
   }
   const c = kase.data;
-  const canEdit = can(me.role, 'matters.edit');
-  const canAdd = can(me.role, 'matters.create');
+  const canEdit = canAct(me, 'matters.edit');
+  const canAdd = canAct(me, 'matters.create');
   const removeError = removeParty.error ?? removeAdvocate.error;
 
   return (
@@ -481,7 +480,7 @@ function CaseHearings({ caseId, caseLabel }: { caseId: string; caseLabel: string
       <CardHeader
         title="Hearings"
         action={
-          can(me.role, 'hearings.manage') ? (
+          canAct(me, 'hearings.manage') ? (
             <Button
               size="sm"
               variant="secondary"

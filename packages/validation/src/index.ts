@@ -8,3 +8,4 @@ export * from './work.js';
 export * from './money.js';
 export * from './billing.js';
 export * from './automation.js';
+export * from './platform.js';

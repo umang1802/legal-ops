@@ -1,10 +1,4 @@
-import {
-  can,
-  MATTER_STATUS_LABELS,
-  PRIORITY_LABELS,
-  PRIORITIES,
-  type MatterListItemDto,
-} from '@legalops/types';
+import { MATTER_STATUS_LABELS, PRIORITY_LABELS, PRIORITIES, type MatterListItemDto } from '@legalops/types';
 import {
   Alert,
   Button,
@@ -21,7 +15,7 @@ import { Briefcase, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { api, qs } from '../../lib/api.js';
-import { useSession } from '../../lib/auth.js';
+import { canAct, useSession } from '../../lib/auth.js';
 import { useDebounced } from '../../lib/hooks.js';
 import { MatterCard } from './MatterCard.js';
 
@@ -71,7 +65,7 @@ export function MattersPage() {
         title="Cases & matters"
         description={seesAll ? undefined : 'Matters you’re assigned to.'}
         actions={
-          can(me.role, 'matters.create') ? (
+          canAct(me, 'matters.create') ? (
             <Button icon={<Plus className="size-4" />} onClick={() => navigate('/matters/new')}>
               New matter
             </Button>
@@ -149,7 +143,7 @@ export function MattersPage() {
                 : 'Matters appear here once you’re assigned to one.'
             }
             action={
-              can(me.role, 'matters.create') && !q ? (
+              canAct(me, 'matters.create') && !q ? (
                 <Button onClick={() => navigate('/matters/new')}>New matter</Button>
               ) : undefined
             }

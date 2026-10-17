@@ -1,11 +1,11 @@
-import { can, HEARING_STATUS_LABELS, type HearingDto, type TaskDto } from '@legalops/types';
+import { HEARING_STATUS_LABELS, type HearingDto, type TaskDto } from '@legalops/types';
 import { Alert, Badge, Button, Card, CardBody, CardHeader, EmptyState, SkeletonList } from '@legalops/ui';
 import { useQuery } from '@tanstack/react-query';
 import { CalendarCheck, Pencil, Plus, XCircle } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router';
 import { api, ApiError, qs } from '../../lib/api.js';
-import { useSession } from '../../lib/auth.js';
+import { canAct, useSession } from '../../lib/auth.js';
 import { formatDate, formatTime, fullName, relativeDay, todayIn } from '../../lib/format.js';
 import { hearingTone } from '../../lib/status.js';
 import { NotFound } from '../common/NotFound.js';
@@ -37,7 +37,7 @@ export function HearingDetailPage() {
     );
   }
   const h = hearing.data;
-  const manage = can(me.role, 'hearings.manage');
+  const manage = canAct(me, 'hearings.manage');
   const scheduled = h.status === 'scheduled';
   const canRecord = manage && scheduled && h.scheduledDate <= today;
 
@@ -138,7 +138,7 @@ export function HearingDetailPage() {
             <CardHeader
               title="Follow-up tasks"
               action={
-                can(me.role, 'tasks.manage') ? (
+                canAct(me, 'tasks.manage') ? (
                   <Button
                     size="sm"
                     variant="secondary"
@@ -157,7 +157,7 @@ export function HearingDetailPage() {
                     key={t.id}
                     task={t}
                     today={today}
-                    canComplete={can(me.role, 'tasks.manage') || t.assignee?.userId === me.user.id}
+                    canComplete={canAct(me, 'tasks.manage') || t.assignee?.userId === me.user.id}
                   />
                 ))}
               </div>

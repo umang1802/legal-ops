@@ -1,4 +1,4 @@
-import { can, type ClientListItemDto } from '@legalops/types';
+import { type ClientListItemDto } from '@legalops/types';
 import {
   Alert,
   Badge,
@@ -16,7 +16,7 @@ import { Building2, ChevronRight, Plus, User, UsersRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { api, qs } from '../../lib/api.js';
-import { useSession } from '../../lib/auth.js';
+import { canAct, useSession } from '../../lib/auth.js';
 import { useDebounced } from '../../lib/hooks.js';
 import { ClientFormSheet } from './ClientFormSheet.js';
 
@@ -52,7 +52,7 @@ export function ClientsPage() {
       <PageHeader
         title="Clients"
         actions={
-          can(me.role, 'clients.create') ? (
+          canAct(me, 'clients.create') ? (
             <Button icon={<Plus className="size-4" />} onClick={() => setCreating(true)}>
               New client
             </Button>
@@ -105,7 +105,7 @@ export function ClientsPage() {
               q ? 'Try a phone number or part of the email.' : 'Add your first client to open a matter.'
             }
             action={
-              !q && can(me.role, 'clients.create') ? (
+              !q && canAct(me, 'clients.create') ? (
                 <Button onClick={() => setCreating(true)}>Add client</Button>
               ) : undefined
             }

@@ -1,5 +1,4 @@
 import {
-  can,
   EXPENSE_CATEGORIES,
   FEE_AGREEMENT_TYPE_LABELS,
   FEE_AGREEMENT_TYPES,
@@ -30,7 +29,7 @@ import { FilePlus2, IndianRupee, Plus, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { api, ApiError, qs } from '../../lib/api.js';
-import { useSession } from '../../lib/auth.js';
+import { canAct, useSession } from '../../lib/auth.js';
 import { formatDate, todayIn } from '../../lib/format.js';
 import { formatINR, isZero } from '../../lib/money.js';
 import { INVOICE_TONE } from '../../lib/status.js';
@@ -44,7 +43,7 @@ export function MatterBillingTab({ matter }: { matter: MatterDetailDto }) {
   const me = useSession();
   const navigate = useNavigate();
   const [sheet, setSheet] = useState<'expense' | 'agreement' | 'payment' | null>(null);
-  const billingView = can(me.role, 'billing.view');
+  const billingView = canAct(me, 'billing.view');
   const id = matter.id;
   const summary = useQuery({
     queryKey: ['billing', 'matter', id],
@@ -71,8 +70,8 @@ export function MatterBillingTab({ matter }: { matter: MatterDetailDto }) {
     queryFn: () => api.get<ExpenseDto[]>(`/expenses${qs({ matterId: id })}`),
   });
 
-  const canInvoice = can(me.role, 'invoices.manage');
-  const canExpense = can(me.role, 'matters.create') || canInvoice;
+  const canInvoice = canAct(me, 'invoices.manage');
+  const canExpense = canAct(me, 'matters.create') || canInvoice;
 
   return (
     <div className="space-y-4">
@@ -85,7 +84,7 @@ export function MatterBillingTab({ matter }: { matter: MatterDetailDto }) {
             New invoice
           </Button>
         ) : null}
-        {can(me.role, 'payments.record') ? (
+        {canAct(me, 'payments.record') ? (
           <Button
             variant="secondary"
             icon={<IndianRupee className="size-4" />}

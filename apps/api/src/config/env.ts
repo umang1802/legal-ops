@@ -5,6 +5,11 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().default(4000),
   DATABASE_URL: z.string().min(1),
   SESSION_SECRET: z.string().min(32, { error: 'SESSION_SECRET must be at least 32 characters' }),
+  // Empty (as in .env.example) means unset.
+  PLATFORM_SECRET_KEY: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().min(32, { error: 'PLATFORM_SECRET_KEY must be at least 32 characters' }).optional(),
+  ),
   APP_URL: z.url(),
   CORS_ALLOWED_ORIGINS: z
     .string()
@@ -39,6 +44,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   }
   if (parsed.data.NODE_ENV === 'production' && parsed.data.SESSION_SECRET.startsWith('change-me')) {
     throw new Error('SESSION_SECRET must be set to a real secret in production');
+  }
+  if (parsed.data.NODE_ENV === 'production' && !parsed.data.PLATFORM_SECRET_KEY) {
+    throw new Error('PLATFORM_SECRET_KEY must be set in production');
   }
   return parsed.data;
 }

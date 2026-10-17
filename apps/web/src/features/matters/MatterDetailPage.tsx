@@ -1,6 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
-  can,
   CASE_STATUS_LABELS,
   MATTER_STAFF_ROLE_LABELS,
   MATTER_STAFF_ROLES,
@@ -50,7 +49,7 @@ import { useForm } from 'react-hook-form';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { z } from 'zod';
 import { api, ApiError, qs } from '../../lib/api.js';
-import { useSession } from '../../lib/auth.js';
+import { canAct, useSession } from '../../lib/auth.js';
 import { formatDate, formatDateTime, fullName, relativeTime, todayIn } from '../../lib/format.js';
 import { useMembers } from '../../lib/hooks.js';
 import { CASE_STATUS_TONE, MATTER_STATUS_TONE, PRIORITY_TONE } from '../../lib/status.js';
@@ -100,8 +99,8 @@ export function MatterDetailPage() {
     );
   }
   const m = matter.data;
-  const canEdit = can(me.role, 'matters.edit');
-  const canAdd = can(me.role, 'matters.create');
+  const canEdit = canAct(me, 'matters.edit');
+  const canAdd = canAct(me, 'matters.create');
 
   return (
     <div className="space-y-4">
@@ -144,14 +143,14 @@ export function MatterDetailPage() {
         {canAdd ? (
           <QuickAction icon={<Scale />} label="Add case" onClick={() => setAddingCase(true)} />
         ) : null}
-        {can(me.role, 'hearings.manage') && m.cases.length > 0 ? (
+        {canAct(me, 'hearings.manage') && m.cases.length > 0 ? (
           <QuickAction icon={<CalendarDays />} label="Add hearing" onClick={() => setAddingHearing(true)} />
         ) : null}
-        {can(me.role, 'tasks.manage') ? (
+        {canAct(me, 'tasks.manage') ? (
           <QuickAction icon={<CheckSquare />} label="Add task" onClick={() => setAddingTask(true)} />
         ) : null}
         <QuickAction icon={<FileText />} label="Add document" soon />
-        {can(me.role, 'invoices.manage') ? (
+        {canAct(me, 'invoices.manage') ? (
           <QuickAction
             icon={<Banknote />}
             label="Invoice"
@@ -303,7 +302,7 @@ export function MatterDetailPage() {
         <MatterHearingsTab
           matter={m}
           onAdd={
-            can(me.role, 'hearings.manage') && m.cases.length > 0 ? () => setAddingHearing(true) : undefined
+            canAct(me, 'hearings.manage') && m.cases.length > 0 ? () => setAddingHearing(true) : undefined
           }
         />
       ) : tab === 'billing' ? (
@@ -313,7 +312,7 @@ export function MatterDetailPage() {
       ) : tab === 'tasks' ? (
         <MatterTasksTab
           matterId={m.id}
-          onAdd={can(me.role, 'tasks.manage') ? () => setAddingTask(true) : undefined}
+          onAdd={canAct(me, 'tasks.manage') ? () => setAddingTask(true) : undefined}
         />
       ) : (
         <Card>
@@ -674,7 +673,7 @@ function MatterTasksTab({ matterId, onAdd }: { matterId: string; onAdd: (() => v
   if (tasks.isError) return <Alert tone="danger">Couldn’t load tasks.</Alert>;
   const open = tasks.data.items.filter((t) => t.status !== 'done' && t.status !== 'cancelled');
   const closed = tasks.data.items.filter((t) => t.status === 'done' || t.status === 'cancelled');
-  const canComplete = (t: TaskDto) => can(me.role, 'tasks.manage') || t.assignee?.userId === me.user.id;
+  const canComplete = (t: TaskDto) => canAct(me, 'tasks.manage') || t.assignee?.userId === me.user.id;
   return (
     <div className="space-y-4">
       {onAdd ? (

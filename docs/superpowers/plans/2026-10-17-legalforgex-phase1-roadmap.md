@@ -17,8 +17,8 @@ The spec spans eight largely independent tracks. Each track gets its own detaile
 | # | Plan file | Scope (spec refs) | Migration | Status |
 |---|---|---|---|---|
 | 0 | — | Owner commits Phases 1–5 | — | **Prerequisite** |
-| 1 | `2026-10-17-legalforgex-t1-hearing-updates-reminders.md` | Client summary vs internal note, audience-safe templates, reminder matrix, per-key default seeding (§3.6, §3.7, §5.4, §5.5) | `0006` | **Written** |
-| 2 | `…-t2-platform-realm.md` | Platform admins, sessions, TOTP, org status, firm invite, suspend/reactivate + middleware + worker skip, platform console UI, platform audit log (§3.1–3.3, §5.2, §6.1, §7) | `0007` | To write after T1 |
+| 1 | `2026-10-17-legalforgex-t1-hearing-updates-reminders.md` | Client summary vs internal note, audience-safe templates, reminder matrix, per-key default seeding (§3.6, §3.7, §5.4, §5.5) | `0006` | **Done (merged 2026-10-17)** |
+| 2 | `2026-10-17-legalforgex-t2-platform-realm.md` | Platform admins, sessions, TOTP, org status, firm invite, suspend/reactivate + middleware + worker skip, platform console UI, platform audit log (§3.1–3.3, §5.2, §6.1, §7) | `0007` | **Done (pending merge)** |
 | 3 | `…-t3-onboarding.md` | Owner-invite acceptance (new + existing users), setup wizard, getting-started checklist, firm-side invite resend/revoke (§5.1, §6.2) | — | After T2 |
 | 4 | `…-t4-case-form.md` | Field registry + master-form content, `cases.details`, `case_type` closed set, full-page case form, detail cards, Case form settings, filters/search, field requests (§3.4, §3.5, §4, §5.3) | `0008` | After T3; content needs lawyer review |
 | 5 | `…-t5-branding.md` | Storage adapter, logo upload + public route, brand colour + contrast guard, sender name/reply-to, branded email layout, theming, print pages (§3.1, §3.8, §6.2–6.3) | `0009` | After T3 |

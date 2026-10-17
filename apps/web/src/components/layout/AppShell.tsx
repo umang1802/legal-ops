@@ -1,12 +1,13 @@
-import { can } from '@legalops/types';
+import type { Permission } from '@legalops/types';
 import { Button, cn, SearchInput, Sheet, SkeletonList } from '@legalops/ui';
 import { Banknote, Briefcase, CheckSquare, Home, LogOut, Menu, Plus, Scale, Search } from 'lucide-react';
 import { Suspense, useState } from 'react';
 import { NavLink, Outlet, ScrollRestoration, useNavigate } from 'react-router';
-import { useLogout, useSession } from '../../lib/auth.js';
+import { canAct, useLogout, useSession } from '../../lib/auth.js';
 import { initials } from '../../lib/format.js';
 import { OrgSwitcher } from './OrgSwitcher.js';
 import { SETTINGS_NAV, SIDEBAR, type NavItem } from './nav.js';
+import { SuspendedBanner } from './SuspendedBanner.js';
 
 function SidebarLink({ item }: { item: NavItem }) {
   const Icon = item.icon;
@@ -60,8 +61,10 @@ export function AppShell() {
   const logout = useLogout();
   const navigate = useNavigate();
   const [quickAddOpen, setQuickAddOpen] = useState(false);
-  const visible = (items: NavItem[]) => items.filter((i) => !i.permission || can(me.role, i.permission));
-  const canBilling = can(me.role, 'billing.view');
+  const visible = (items: NavItem[]) => items.filter((i) => !i.permission || canAct(me, i.permission));
+  const canBilling = canAct(me, 'billing.view');
+  // Hidden when nothing could be added (read-only users, suspended firms) rather than opening an empty sheet.
+  const canQuickAdd = QUICK_ADD.some((i) => canAct(me, i.permission));
 
   const signOut = () => logout.mutate(undefined, { onSettled: () => navigate('/login', { replace: true }) });
 
@@ -118,6 +121,7 @@ export function AppShell() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        <SuspendedBanner />
         {/* Mobile top bar */}
         <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-line bg-surface/95 px-4 backdrop-blur lg:hidden">
           <Scale className="size-5 text-brand-700" aria-hidden />
@@ -147,14 +151,16 @@ export function AppShell() {
           <BottomTab to="/" label="Home" icon={Home} end />
           <BottomTab to="/cases" label="Cases" icon={Briefcase} />
           <div className="flex flex-1 items-center justify-center">
-            <button
-              type="button"
-              onClick={() => setQuickAddOpen(true)}
-              className="-mt-6 grid size-14 place-items-center rounded-full bg-brand-700 text-white shadow-lg ring-4 ring-canvas active:bg-brand-800"
-              aria-label="Quick add"
-            >
-              <Plus className="size-6" />
-            </button>
+            {canQuickAdd ? (
+              <button
+                type="button"
+                onClick={() => setQuickAddOpen(true)}
+                className="-mt-6 grid size-14 place-items-center rounded-full bg-brand-700 text-white shadow-lg ring-4 ring-canvas active:bg-brand-800"
+                aria-label="Quick add"
+              >
+                <Plus className="size-6" />
+              </button>
+            ) : null}
           </div>
           {canBilling ? (
             <BottomTab to="/billing" label="Billing" icon={Banknote} />
@@ -172,15 +178,17 @@ export function AppShell() {
   );
 }
 
+const QUICK_ADD: { label: string; to: string; permission: Permission }[] = [
+  { label: 'Matter', to: '/matters/new', permission: 'matters.create' },
+  { label: 'Client', to: '/clients?new=1', permission: 'clients.create' },
+  { label: 'Hearing', to: '/calendar?new=1', permission: 'hearings.manage' },
+  { label: 'Task', to: '/tasks?new=1', permission: 'tasks.manage' },
+];
+
 function QuickAdd({ onPick }: { onPick: () => void }) {
   const navigate = useNavigate();
   const me = useSession();
-  const items = [
-    { label: 'Matter', to: '/matters/new', allowed: can(me.role, 'matters.create') },
-    { label: 'Client', to: '/clients?new=1', allowed: can(me.role, 'clients.create') },
-    { label: 'Hearing', to: '/calendar?new=1', allowed: can(me.role, 'hearings.manage') },
-    { label: 'Task', to: '/tasks?new=1', allowed: can(me.role, 'tasks.manage') },
-  ].filter((i) => i.allowed);
+  const items = QUICK_ADD.filter((i) => canAct(me, i.permission));
   return (
     <div className="grid grid-cols-2 gap-3">
       {items.map((i) => (

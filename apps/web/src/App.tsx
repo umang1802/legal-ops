@@ -57,11 +57,14 @@ const AutomationsPage = lazy(() =>
 const InvoicePrintPage = lazy(() =>
   import('./features/billing/PrintPages.js').then((m) => ({ default: m.InvoicePrintPage })),
 );
+const PlatformApp = lazy(() => import('./platform/PlatformApp.js').then((m) => ({ default: m.PlatformApp })));
 const ReceiptPrintPage = lazy(() =>
   import('./features/billing/PrintPages.js').then((m) => ({ default: m.ReceiptPrintPage })),
 );
 
 const router = createBrowserRouter([
+  // LegalForgeX platform console: its own realm, loaded only when visited.
+  { path: '/platform/*', element: <PlatformApp /> },
   {
     element: <RedirectIfAuthed />,
     children: [

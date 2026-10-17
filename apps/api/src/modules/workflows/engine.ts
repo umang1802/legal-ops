@@ -310,6 +310,8 @@ export async function executeScheduledAction(deps: Deps, id: string, now: Date):
     if (!wf || !wf.is_active) return finish('cancelled', { reason: 'Automation switched off' });
 
     const context = await buildContext(tx, sa.organization_id, sa.payload.refs, now, deps.env.APP_URL);
+    // Suspended firms send nothing; due actions are recorded as skipped, never deferred (L-12).
+    if (context.raw.orgStatus === 'suspended') return finish('skipped', { reason: 'Firm suspended' });
     const invalid = stillValid(sa, sa.payload, context);
     if (invalid) return finish('skipped', { reason: invalid });
     const flat = { ...flatten(context.vars), ...payloadFacts({ event_type: sa.payload.eventType, payload: (await sourcePayload(tx, sa.source_event_id)) ?? {} }) };

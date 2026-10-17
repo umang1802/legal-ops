@@ -1,4 +1,4 @@
-import { AGING_BUCKETS, can, PAYMENT_METHOD_LABELS, type BillingSummaryDto } from '@legalops/types';
+import { AGING_BUCKETS, PAYMENT_METHOD_LABELS, type BillingSummaryDto } from '@legalops/types';
 import {
   Alert,
   Button,
@@ -15,7 +15,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { BillingNav } from './BillingNav.js';
 import { api } from '../../lib/api.js';
-import { useSession } from '../../lib/auth.js';
+import { canAct, useSession } from '../../lib/auth.js';
 import { formatDate } from '../../lib/format.js';
 import { formatINR, isZero } from '../../lib/money.js';
 import { InvoiceRow } from './InvoiceRow.js';
@@ -39,7 +39,7 @@ export function BillingPage() {
         description={d?.scope === 'mine' ? 'Invoices on matters you’re assigned to.' : undefined}
         actions={
           <>
-            {can(me.role, 'payments.record') ? (
+            {canAct(me, 'payments.record') ? (
               <Button
                 variant="secondary"
                 icon={<IndianRupee className="size-4" />}
@@ -48,7 +48,7 @@ export function BillingPage() {
                 Record payment
               </Button>
             ) : null}
-            {can(me.role, 'invoices.manage') ? (
+            {canAct(me, 'invoices.manage') ? (
               <Button icon={<FilePlus2 className="size-4" />} onClick={() => navigate('/invoices/new')}>
                 New invoice
               </Button>

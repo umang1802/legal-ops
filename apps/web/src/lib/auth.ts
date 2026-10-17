@@ -1,4 +1,4 @@
-import { can, type MeResponse, type Permission } from '@legalops/types';
+import { allowedWhileSuspended, can, type MeResponse, type Permission } from '@legalops/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, setCsrfToken } from './api.js';
 
@@ -32,9 +32,18 @@ export function useSession(): MeResponse {
   return data;
 }
 
+/**
+ * Permission check for UI controls. A suspended firm keeps read access only, so every
+ * create/edit control gated through here disappears. Use this rather than `can(me.role, …)`.
+ */
+export function canAct(me: MeResponse, permission: Permission): boolean {
+  if (me.organization.status === 'suspended' && !allowedWhileSuspended(permission)) return false;
+  return can(me.role, permission);
+}
+
 export function useCan(permission: Permission): boolean {
   const { data } = useMe();
-  return data ? can(data.role, permission) : false;
+  return data ? canAct(data, permission) : false;
 }
 
 export function useLogin() {
