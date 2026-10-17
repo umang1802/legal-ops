@@ -1,10 +1,9 @@
-import { can } from '@legalops/types';
 import { Card } from '@legalops/ui';
 import { ChevronRight, LogOut } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import { OrgSwitcher } from '../../components/layout/OrgSwitcher.js';
 import { SETTINGS_NAV, SIDEBAR } from '../../components/layout/nav.js';
-import { useLogout, useSession } from '../../lib/auth.js';
+import { canAct, useLogout, useSession } from '../../lib/auth.js';
 
 /** Mobile overflow menu: everything not in the bottom bar. */
 export function MorePage() {
@@ -13,7 +12,7 @@ export function MorePage() {
   const navigate = useNavigate();
   const inBottomBar = new Set(['/', '/cases', '/billing']);
   const items = [...SIDEBAR.filter((i) => !inBottomBar.has(i.to)), ...SETTINGS_NAV].filter(
-    (i) => !i.permission || can(me.role, i.permission),
+    (i) => !i.permission || canAct(me, i.permission),
   );
 
   return (

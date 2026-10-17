@@ -11,7 +11,8 @@
     "start:worker": "node dist/worker.js",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "seed:demo": "tsx --env-file=../../.env src/scripts/seed-demo.ts"
+    "seed:demo": "tsx --env-file=../../.env src/scripts/seed-demo.ts",
+    "platform:create-admin": "tsx --env-file=../../.env src/scripts/create-platform-admin.ts"
   },
   "dependencies": {
     "@aws-sdk/client-sesv2": "^3.1145.0",

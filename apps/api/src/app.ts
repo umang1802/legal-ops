@@ -6,6 +6,7 @@ import { pinoHttp } from 'pino-http';
 import type { Deps } from './deps.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { requestId } from './middleware/request-context.js';
+import { blockWritesWhenSuspended } from './middleware/suspension.js';
 import { csrfProtection, requireJson } from './middleware/security.js';
 import { authRouter, sessionLoader, type RateLimits } from './modules/auth/auth.routes.js';
 import {
@@ -30,6 +31,7 @@ import { notificationsRouter } from './modules/notifications/notifications.route
 import { templatesRouter } from './modules/templates/templates.routes.js';
 import { workflowsRouter } from './modules/workflows/workflows.routes.js';
 import { organizationRouter } from './modules/organizations/organizations.routes.js';
+import { platformRouter } from './modules/platform/platform.routes.js';
 
 const DEFAULT_LIMITS: RateLimits = { loginPerWindow: 10, resetPerWindow: 5, windowMs: 15 * 60_000 };
 
@@ -72,6 +74,7 @@ export function createApp(deps: Deps, opts: { rateLimits?: Partial<RateLimits> }
   api.use(requireJson);
   api.use(sessionLoader(deps));
   api.use(csrfProtection);
+  api.use(blockWritesWhenSuspended);
   api.use('/auth', authRouter(deps, { ...DEFAULT_LIMITS, ...opts.rateLimits }));
   api.use('/organization', organizationRouter(deps));
   api.use('/clients', clientsRouter(deps));
@@ -92,6 +95,8 @@ export function createApp(deps: Deps, opts: { rateLimits?: Partial<RateLimits> }
   api.use('/email-templates', templatesRouter(deps));
   api.use('/workflows', workflowsRouter(deps));
   if (deps.env.NODE_ENV !== 'production') api.use('/dev', devRouter(deps));
+  // Platform realm (LegalForgeX team): own cookie, session, CSRF and MFA; never runs firm middleware.
+  app.use('/api/v1/platform', platformRouter(deps, { ...DEFAULT_LIMITS, ...opts.rateLimits }));
   app.use('/api/v1', api);
 
   app.use(notFoundHandler);

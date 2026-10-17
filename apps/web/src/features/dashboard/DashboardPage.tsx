@@ -1,4 +1,4 @@
-import { can, type DashboardDto } from '@legalops/types';
+import { type DashboardDto } from '@legalops/types';
 import { Alert, Badge, Button, Card, CardHeader, EmptyState, Skeleton } from '@legalops/ui';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -14,7 +14,7 @@ import {
 import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { api } from '../../lib/api.js';
-import { useSession } from '../../lib/auth.js';
+import { canAct, useSession } from '../../lib/auth.js';
 import { fullName, greeting, longDate, relativeTime } from '../../lib/format.js';
 import { formatINR, isZero } from '../../lib/money.js';
 import { HearingRow } from '../hearings/HearingRow.js';
@@ -30,8 +30,8 @@ export function DashboardPage() {
     queryFn: () => api.get<DashboardDto>('/dashboard'),
     refetchInterval: 5 * 60_000,
   });
-  const showMoney = can(me.role, 'finance.dashboard');
-  const canComplete = (assigneeId?: string) => can(me.role, 'tasks.manage') || assigneeId === me.user.id;
+  const showMoney = canAct(me, 'finance.dashboard');
+  const canComplete = (assigneeId?: string) => canAct(me, 'tasks.manage') || assigneeId === me.user.id;
 
   return (
     <div className="space-y-6">
@@ -42,7 +42,7 @@ export function DashboardPage() {
             {greeting(tz)}, {me.user.firstName}
           </h1>
         </div>
-        {can(me.role, 'matters.create') ? (
+        {canAct(me, 'matters.create') ? (
           <Button icon={<Plus className="size-4" />} onClick={() => navigate('/matters/new')}>
             Add matter
           </Button>

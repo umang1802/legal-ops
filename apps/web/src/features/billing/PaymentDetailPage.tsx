@@ -1,4 +1,4 @@
-import { can, PAYMENT_METHOD_LABELS, type InvoiceListItemDto, type PaymentDto } from '@legalops/types';
+import { PAYMENT_METHOD_LABELS, type InvoiceListItemDto, type PaymentDto } from '@legalops/types';
 import {
   Alert,
   Badge,
@@ -16,7 +16,7 @@ import { Printer, Undo2 } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router';
 import { api, ApiError, qs } from '../../lib/api.js';
-import { useSession } from '../../lib/auth.js';
+import { canAct, useSession } from '../../lib/auth.js';
 import { formatDate, fullName, todayIn } from '../../lib/format.js';
 import { formatINR, isZero } from '../../lib/money.js';
 import { NotFound } from '../common/NotFound.js';
@@ -52,7 +52,7 @@ export function PaymentDetailPage() {
       <Alert tone="danger">Couldn’t load this payment.</Alert>
     );
   const pay = p.data;
-  const canRecord = can(me.role, 'payments.record');
+  const canRecord = canAct(me, 'payments.record');
   const posted = pay.status === 'posted';
 
   return (

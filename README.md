@@ -60,6 +60,15 @@ Seeded practice data includes hearings today and tomorrow, one hearing awaiting 
 
 `other-partner@example.com` owns a second firm, **Verma Legal Chambers**, for tenant-isolation checks.
 
+## Platform admins (LegalForgeX team)
+
+The platform console at `/platform/login` is where the LegalForgeX team invites firms, keeps payment notes, and suspends or reactivates firms. It is a separate login from any firm account, and two-factor sign-in (an authenticator app) is required.
+
+- Create an admin: `pnpm --filter @legalops/api platform:create-admin -- --email you@legalforgex.com --name "Your Name"`. The one-time password is printed once.
+- On first sign-in the console shows a key to add to an authenticator app; the first valid code completes setup.
+- Lost phone or password: `… platform:create-admin -- --email you@legalforgex.com --name "Your Name" --reset` issues a new password, clears two-factor setup and signs out existing sessions.
+- Production needs `PLATFORM_SECRET_KEY` (≥32 characters); it encrypts the two-factor keys.
+
 ## Commands
 
 | Command           | What it does                                                                                    |

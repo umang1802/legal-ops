@@ -1,4 +1,4 @@
-import { can, type ClientDto, type MatterListItemDto } from '@legalops/types';
+import { type ClientDto, type MatterListItemDto } from '@legalops/types';
 import {
   Alert,
   Badge,
@@ -15,7 +15,7 @@ import { Archive, Briefcase, Mail, MapPin, Pencil, Phone, Plus } from 'lucide-re
 import { useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { api, ApiError, qs } from '../../lib/api.js';
-import { useSession } from '../../lib/auth.js';
+import { canAct, useSession } from '../../lib/auth.js';
 import { NotFound } from '../common/NotFound.js';
 import { MatterCard } from '../matters/MatterCard.js';
 import { ClientBilling } from './ClientBilling.js';
@@ -36,7 +36,7 @@ export function ClientDetailPage() {
   const matters = useQuery({
     queryKey: ['matters', { clientId, status: 'all' }],
     queryFn: () => api.getPage<MatterListItemDto>(`/matters${qs({ clientId, status: 'all', pageSize: 50 })}`),
-    enabled: can(me.role, 'matters.view'),
+    enabled: canAct(me, 'matters.view'),
   });
   const archive = useMutation({
     mutationFn: () => api.delete(`/clients/${clientId}`),
@@ -56,7 +56,7 @@ export function ClientDetailPage() {
     );
   }
   const c = client.data;
-  const canEdit = can(me.role, 'clients.edit') && c.status !== 'archived';
+  const canEdit = canAct(me, 'clients.edit') && c.status !== 'archived';
 
   return (
     <div className="space-y-4">
@@ -80,7 +80,7 @@ export function ClientDetailPage() {
               Edit
             </Button>
           ) : null}
-          {can(me.role, 'matters.create') && c.status !== 'archived' ? (
+          {canAct(me, 'matters.create') && c.status !== 'archived' ? (
             <Button
               icon={<Plus className="size-4" />}
               onClick={() => navigate(`/matters/new?clientId=${c.id}`)}
@@ -150,7 +150,7 @@ export function ClientDetailPage() {
               <EmptyState icon={<Briefcase />} title="No matters to show" />
             )}
           </Card>
-          {can(me.role, 'billing.view') ? <ClientBilling client={c} /> : null}
+          {canAct(me, 'billing.view') ? <ClientBilling client={c} /> : null}
           {canEdit ? (
             <div className="flex justify-end">
               <Button

@@ -1,11 +1,11 @@
-import { can, seesAllMatters, type TaskDto } from '@legalops/types';
+import { seesAllMatters, type TaskDto } from '@legalops/types';
 import { Alert, Button, Card, EmptyState, PageHeader, Pagination, SkeletonList, Tabs } from '@legalops/ui';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { CheckCircle2, Plus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { api, qs } from '../../lib/api.js';
-import { useSession } from '../../lib/auth.js';
+import { canAct, useSession } from '../../lib/auth.js';
 import { todayIn } from '../../lib/format.js';
 import { TaskFormSheet } from './TaskFormSheet.js';
 import { TaskRow } from './TaskRow.js';
@@ -53,7 +53,7 @@ export function TasksPage() {
             : undefined
         }
         actions={
-          can(me.role, 'tasks.manage') ? (
+          canAct(me, 'tasks.manage') ? (
             <Button icon={<Plus className="size-4" />} onClick={() => setCreating(true)}>
               New task
             </Button>
@@ -87,7 +87,7 @@ export function TasksPage() {
                 key={t.id}
                 task={t}
                 today={today}
-                canComplete={can(me.role, 'tasks.manage') || t.assignee?.userId === me.user.id}
+                canComplete={canAct(me, 'tasks.manage') || t.assignee?.userId === me.user.id}
               />
             ))}
           </Card>

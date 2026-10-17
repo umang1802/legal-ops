@@ -1,3 +1,4 @@
+import type { OrganizationStatus } from '@legalops/types';
 import { toPaise } from '@legalops/validation';
 import { queryOne, type Db } from '../../db/pool.js';
 import { sql } from '../../db/sql.js';
@@ -21,6 +22,7 @@ export type ContextRaw = {
   invoice?: { status: string; due_date: string | null; amount_due: string; total: string };
   task?: { status: string; due_date: string | null; assignee_id: string | null; created_by: string | null };
   leadUserId: string | null;
+  orgStatus: OrganizationStatus;
 };
 
 export type TemplateContext = { vars: Record<string, Record<string, unknown>>; refs: ResolvedRefs; raw: ContextRaw };
@@ -53,12 +55,12 @@ const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00
  */
 export async function buildContext(db: Db, organizationId: string, refs: ContextRefs, now: Date, appUrl: string): Promise<TemplateContext> {
   const r: ResolvedRefs = { clientId: null, matterId: null, caseId: null, hearingId: null, invoiceId: null, paymentId: null, taskId: null, ...refs };
-  const org = (await queryOne<{ name: string; email: string | null; phone: string | null; today: string }>(
+  const org = (await queryOne<{ name: string; email: string | null; phone: string | null; today: string; status: OrganizationStatus }>(
     db,
-    sql`SELECT name, email, phone, ((${now.toISOString()}::timestamptz AT TIME ZONE timezone)::date)::text AS today FROM organizations WHERE id = ${organizationId}`,
+    sql`SELECT name, email, phone, status, ((${now.toISOString()}::timestamptz AT TIME ZONE timezone)::date)::text AS today FROM organizations WHERE id = ${organizationId}`,
   ))!;
   const vars: TemplateContext['vars'] = { firm: { name: org.name, email: org.email ?? '', phone: org.phone ?? '' }, links: {} };
-  const raw: ContextRaw = { today: org.today, leadUserId: null };
+  const raw: ContextRaw = { today: org.today, leadUserId: null, orgStatus: org.status };
   const link = (path: string) => `${appUrl.replace(/\/$/, '')}${path}`;
 
   if (r.taskId) {

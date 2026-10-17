@@ -1,11 +1,11 @@
-import { can, seesAllMatters, type HearingDto } from '@legalops/types';
+import { seesAllMatters, type HearingDto } from '@legalops/types';
 import { Alert, Button, Card, cn, EmptyState, SkeletonList } from '@legalops/ui';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { api, qs } from '../../lib/api.js';
-import { useSession } from '../../lib/auth.js';
+import { canAct, useSession } from '../../lib/auth.js';
 import { addDays, formatTime, fullName, relativeDay, todayIn } from '../../lib/format.js';
 import { useMembers } from '../../lib/hooks.js';
 import { HearingFormSheet } from '../hearings/HearingFormSheet.js';
@@ -79,7 +79,7 @@ export function CalendarPage() {
     <>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Calendar</h1>
-        {can(me.role, 'hearings.manage') ? (
+        {canAct(me, 'hearings.manage') ? (
           <Button icon={<Plus className="size-4" />} onClick={() => setScheduling(true)}>
             Schedule hearing
           </Button>

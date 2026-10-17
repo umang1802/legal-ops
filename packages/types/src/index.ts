@@ -4,3 +4,4 @@ export * from './api.js';
 export * from './domain.js';
 export * from './dtos.js';
 export * from './workflows.js';
+export * from './platform.js';

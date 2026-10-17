@@ -1,4 +1,4 @@
-import { isRole, permissionsFor, type MeResponse, type Role } from '@legalops/types';
+import { isRole, permissionsFor, type MeResponse, type OrganizationStatus, type Role } from '@legalops/types';
 import { query, queryOne, withTransaction, type Db } from '../../db/pool.js';
 import { sql } from '../../db/sql.js';
 import type { Deps } from '../../deps.js';
@@ -41,11 +41,12 @@ async function createSession(
 /** Resolves a cookie token to an auth context. Re-checks user + membership on every request. */
 export async function loadSession(deps: Deps, token: string): Promise<AuthContext | null> {
   const id = hashToken(deps.env.SESSION_SECRET, token);
-  const row = await queryOne<{ user_id: string; organization_id: string; role: string; csrf_secret: string }>(
+  const row = await queryOne<{ user_id: string; organization_id: string; role: string; csrf_secret: string; org_status: OrganizationStatus }>(
     deps.pool,
-    sql`SELECT s.user_id, s.active_organization_id AS organization_id, m.role, s.csrf_secret
+    sql`SELECT s.user_id, s.active_organization_id AS organization_id, m.role, s.csrf_secret, o.status AS org_status
         FROM sessions s
         JOIN users u ON u.id = s.user_id AND u.is_active
+        JOIN organizations o ON o.id = s.active_organization_id
         JOIN organization_members m
           ON m.user_id = s.user_id AND m.organization_id = s.active_organization_id AND m.status = 'active'
         WHERE s.id = ${id} AND s.revoked_at IS NULL AND s.expires_at > now()`,
@@ -62,6 +63,7 @@ export async function loadSession(deps: Deps, token: string): Promise<AuthContex
     organizationId: row.organization_id,
     role: row.role,
     csrfSecret: row.csrf_secret,
+    orgStatus: row.org_status,
   };
 }
 
@@ -81,12 +83,13 @@ export async function getMe(deps: Deps, db: Db, sessionId: string): Promise<MeRe
     timezone: string;
     currency: string;
     tax_mode: 'simple' | 'gst';
+    org_status: OrganizationStatus;
     role: Role;
     csrf_secret: string;
   }>(
     db,
     sql`SELECT u.id AS user_id, u.email, u.first_name, u.last_name, u.email_verified_at,
-               o.id AS org_id, o.name AS org_name, o.timezone, o.currency, o.tax_mode, m.role, s.csrf_secret
+               o.id AS org_id, o.name AS org_name, o.timezone, o.currency, o.tax_mode, o.status AS org_status, m.role, s.csrf_secret
         FROM sessions s
         JOIN users u ON u.id = s.user_id
         JOIN organizations o ON o.id = s.active_organization_id
@@ -115,6 +118,7 @@ export async function getMe(deps: Deps, db: Db, sessionId: string): Promise<MeRe
       timezone: row.timezone,
       currency: row.currency,
       taxMode: row.tax_mode,
+      status: row.org_status,
     },
     role: row.role,
     permissions: permissionsFor(row.role),
@@ -437,6 +441,8 @@ export async function acceptInvitation(
           DO UPDATE SET role = EXCLUDED.role, status = 'active', joined_at = now()`,
     );
     await query(tx, sql`UPDATE invitations SET accepted_at = now() WHERE id = ${invite.id}`);
+    // A platform-invited firm becomes active when its owner accepts (spec §5.1).
+    await query(tx, sql`UPDATE organizations SET status = 'active' WHERE id = ${invite.organization_id} AND status = 'invited'`);
     await recordAudit(tx, {
       organizationId: invite.organization_id,
       actorUserId: userId,

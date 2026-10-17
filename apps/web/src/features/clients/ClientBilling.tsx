@@ -1,10 +1,10 @@
-import { can, type ClientBalanceDto, type ClientDto, type InvoiceListItemDto } from '@legalops/types';
+import { type ClientBalanceDto, type ClientDto, type InvoiceListItemDto } from '@legalops/types';
 import { Button, Card, CardHeader, EmptyState } from '@legalops/ui';
 import { useQuery } from '@tanstack/react-query';
 import { IndianRupee } from 'lucide-react';
 import { useState } from 'react';
 import { api, qs } from '../../lib/api.js';
-import { useSession } from '../../lib/auth.js';
+import { canAct, useSession } from '../../lib/auth.js';
 import { formatINR, isZero } from '../../lib/money.js';
 import { InvoiceRow } from '../billing/InvoiceRow.js';
 import { RecordPaymentSheet } from '../billing/RecordPaymentSheet.js';
@@ -27,7 +27,7 @@ export function ClientBilling({ client }: { client: ClientDto }) {
       <CardHeader
         title="Billing"
         action={
-          can(me.role, 'payments.record') ? (
+          canAct(me, 'payments.record') ? (
             <Button
               size="sm"
               variant="secondary"

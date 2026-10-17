@@ -1,4 +1,4 @@
-import { can, PRIORITY_LABELS, TASK_STATUS_LABELS, type TaskCommentDto, type TaskDto } from '@legalops/types';
+import { PRIORITY_LABELS, TASK_STATUS_LABELS, type TaskCommentDto, type TaskDto } from '@legalops/types';
 import {
   Alert,
   Badge,
@@ -15,7 +15,7 @@ import { Check, Pencil, Play } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router';
 import { api, ApiError } from '../../lib/api.js';
-import { useSession } from '../../lib/auth.js';
+import { canAct, useSession } from '../../lib/auth.js';
 import { formatDateTime, fullName, relativeDay, relativeTime, todayIn } from '../../lib/format.js';
 import { useMembers } from '../../lib/hooks.js';
 import { invalidateWork } from '../../lib/invalidate.js';
@@ -67,7 +67,7 @@ export function TaskDetailPage() {
     );
   }
   const t = task.data;
-  const manager = can(me.role, 'tasks.manage');
+  const manager = canAct(me, 'tasks.manage');
   const canChange = manager || t.assignee?.userId === me.user.id;
   const open = t.status === 'todo' || t.status === 'in_progress' || t.status === 'blocked';
   const error = complete.error ?? start.error ?? reassign.error;

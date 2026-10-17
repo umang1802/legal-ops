@@ -24,14 +24,16 @@ async function handleSystemEvent(deps: Deps, db: Db, event: OutboxEvent, now: Da
     });
   }
   if (event.event_type === 'MEMBER_INVITED' && p.invitationId && p.email) {
+    // Platform invites (LegalForgeX team → firm owner) use their own template and greet the partner by first name.
+    const platformInvite = (event.payload as Record<string, unknown>).platformInvite === true;
     const inviter = await queryOne<{ name: string }>(
       db,
       sql`SELECT trim(u.first_name || ' ' || COALESCE(u.last_name, '')) AS name FROM invitations i JOIN users u ON u.id = i.invited_by WHERE i.id = ${p.invitationId}`,
     );
     await createNotification(db, deps.env.APP_URL, {
       organizationId: event.organization_id,
-      templateKey: 'member_invite',
-      recipient: { type: 'external', email: p.email },
+      templateKey: platformInvite ? 'firm_owner_invite' : 'member_invite',
+      recipient: { type: 'external', email: p.email, name: platformInvite && p.partnerName ? p.partnerName.split(' ')[0]! : null },
       refs: {},
       now,
       sourceEventId: event.id,
