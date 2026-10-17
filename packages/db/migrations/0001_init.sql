@@ -9,8 +9,7 @@
 --   * Money is NUMERIC(14,2). The app does arithmetic in integer paise.
 --   * Financial and audit tables are append-only (enforced by triggers below).
 -- Rollback strategy: forward-only. A failed deploy is fixed with a new migration, never an edit to this file.
-
-BEGIN;
+-- The migration runner wraps each file in a transaction; files must not contain BEGIN/COMMIT.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS citext;
@@ -120,7 +119,7 @@ CREATE TABLE invitations (
   organization_id UUID NOT NULL REFERENCES organizations(id),
   email CITEXT NOT NULL,
   role VARCHAR(30) NOT NULL CHECK (role IN ('owner', 'admin', 'lawyer', 'staff', 'finance', 'read_only')),
-  token_hash TEXT NOT NULL UNIQUE,
+  token_hash TEXT UNIQUE,                    -- generated when the invite email is sent
   invited_by UUID REFERENCES users(id),
   expires_at TIMESTAMPTZ NOT NULL,
   accepted_at TIMESTAMPTZ,
@@ -1135,4 +1134,3 @@ BEGIN
   END LOOP;
 END $$;
 
-COMMIT;

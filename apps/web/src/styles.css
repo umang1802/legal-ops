@@ -1,0 +1,49 @@
+@import 'tailwindcss';
+@source '../../../packages/ui/src';
+
+/* Design tokens. Calm, professional; red reserved for attention, green for done/paid. */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', sans-serif;
+
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-200: #c7d2fe;
+  --color-brand-600: #2f4fb8;
+  --color-brand-700: #1e3a8a;
+  --color-brand-800: #1a3175;
+  --color-brand-900: #142659;
+
+  --color-success-50: #ecfdf3;
+  --color-success-200: #a6f4c5;
+  --color-success-800: #05603a;
+  --color-success-900: #054f31;
+  --color-warning-50: #fffaeb;
+  --color-warning-200: #fedf89;
+  --color-warning-800: #93370d;
+  --color-warning-900: #7a2e0e;
+  --color-danger-50: #fef3f2;
+  --color-danger-200: #fecdca;
+  --color-danger-600: #d92d20;
+  --color-danger-700: #b42318;
+  --color-danger-800: #912018;
+  --color-danger-900: #7a271a;
+
+  --color-canvas: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-subtle: #f1f3f6;
+  --color-line: #e3e6eb;
+  --color-ink: #111827;
+  --color-ink-soft: #374151;
+  --color-muted: #6b7280;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  @apply bg-canvas text-ink antialiased;
+  -webkit-tap-highlight-color: transparent;
+}

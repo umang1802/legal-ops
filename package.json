@@ -1,15 +1,36 @@
 {
   "name": "legalops",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@12.6.0",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev:deps": "docker compose up -d",
     "dev:deps:down": "docker compose down",
+    "dev:api": "pnpm --filter @legalops/api dev",
+    "dev:worker": "pnpm --filter @legalops/api dev:worker",
+    "dev:web": "pnpm --filter @legalops/web dev",
+    "db:migrate": "pnpm --filter @legalops/db migrate",
+    "db:seed": "pnpm --filter @legalops/db seed",
+    "db:reset": "pnpm --filter @legalops/db reset && pnpm --filter @legalops/api seed:demo",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "lint": "pnpm -r lint",
+    "lint": "eslint .",
     "test": "pnpm -r test",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^22.20.4",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.9",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.71.0",
+    "vitest": "^3.2.7"
   }
 }

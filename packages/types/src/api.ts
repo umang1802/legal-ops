@@ -1,0 +1,71 @@
+import type { Permission } from './permissions.js';
+import type { Role } from './roles.js';
+
+export type ApiSuccess<T, M = Record<string, unknown>> = { data: T; meta?: M };
+
+export type ApiErrorCode =
+  | 'VALIDATION_ERROR'
+  | 'UNAUTHENTICATED'
+  | 'FORBIDDEN'
+  | 'NOT_FOUND'
+  | 'CONFLICT'
+  | 'RATE_LIMITED'
+  | 'CSRF_INVALID'
+  | 'INVALID_CREDENTIALS'
+  | 'ACCOUNT_DISABLED'
+  | 'NO_MEMBERSHIP'
+  | 'TOKEN_INVALID'
+  | 'NOT_CONFIGURED'
+  | 'DUPLICATE_WARNING'
+  | 'INTERNAL_ERROR';
+
+export type ApiError = {
+  error: { code: ApiErrorCode; message: string; details?: unknown[] };
+};
+
+export type Paginated<T> = ApiSuccess<T[], { page: number; pageSize: number; total: number }>;
+
+export type MembershipSummary = {
+  organizationId: string;
+  organizationName: string;
+  role: Role;
+};
+
+export type MeResponse = {
+  user: { id: string; email: string; firstName: string; lastName: string | null; emailVerified: boolean };
+  organization: { id: string; name: string; timezone: string; currency: string; taxMode: 'simple' | 'gst' };
+  role: Role;
+  permissions: readonly Permission[];
+  memberships: MembershipSummary[];
+  csrfToken: string;
+};
+
+export type MemberDto = {
+  id: string;
+  userId: string;
+  email: string;
+  firstName: string;
+  lastName: string | null;
+  role: Role;
+  status: 'active' | 'suspended' | 'removed';
+  joinedAt: string | null;
+};
+
+export type OrganizationDto = {
+  id: string;
+  name: string;
+  legalName: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  stateCode: string | null;
+  timezone: string;
+  currency: string;
+  invoicePrefix: string;
+  taxMode: 'simple' | 'gst';
+  gstin: string | null;
+  pan: string | null;
+  defaultSendTime: string;
+};

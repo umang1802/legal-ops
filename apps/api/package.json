@@ -1,0 +1,47 @@
+{
+  "name": "@legalops/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=../../.env src/server.ts",
+    "dev:worker": "tsx watch --env-file=../../.env src/worker.ts",
+    "build": "tsup",
+    "start": "node dist/server.js",
+    "start:worker": "node dist/worker.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "seed:demo": "tsx --env-file=../../.env src/scripts/seed-demo.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sesv2": "^3.1145.0",
+    "@legalops/types": "workspace:*",
+    "@legalops/validation": "workspace:*",
+    "@node-rs/argon2": "^2.2.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
+    "nodemailer": "^10.0.13",
+    "pg": "^8.23.1",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
+    "sanitize-html": "^2.18.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@legalops/db": "workspace:*",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/nodemailer": "^8.0.2",
+    "@types/pg": "^8.23.1",
+    "@types/sanitize-html": "^2.16.2",
+    "@types/supertest": "^7.2.1",
+    "supertest": "^7.3.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.15",
+    "vitest": "^3.2.7"
+  }
+}

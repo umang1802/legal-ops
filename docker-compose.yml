@@ -6,16 +6,16 @@ services:
       POSTGRES_USER: legalops
       POSTGRES_PASSWORD: legalops
       POSTGRES_DB: legalops
-    ports: ["5433:5432"]
+    ports: ['5433:5432']
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U legalops"]
+      test: ['CMD-SHELL', 'pg_isready -U legalops']
       interval: 5s
       retries: 10
 
   redis:
     image: redis:7-alpine
-    ports: ["6380:6379"]
+    ports: ['6380:6379']
 
   minio:
     image: minio/minio:latest
@@ -23,8 +23,13 @@ services:
     environment:
       MINIO_ROOT_USER: legalops
       MINIO_ROOT_PASSWORD: legalops-dev-secret
-    ports: ["9000:9000", "9001:9001"]
+    ports: ['9000:9000', '9001:9001']
     volumes: [miniodata:/data]
+
+  # Local mail catcher: the app really sends over SMTP; read every email at http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:latest
+    ports: ["1025:1025", "8025:8025"]
 
 volumes:
   pgdata:

@@ -1,0 +1,24 @@
+{
+  "name": "@legalops/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "migrate": "tsx src/cli.ts migrate",
+    "reset": "tsx src/cli.ts reset",
+    "seed": "tsx src/cli.ts seed",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "tsx src/cli.ts invariants"
+  },
+  "dependencies": {
+    "@node-rs/argon2": "^2.2.1",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15"
+  }
+}
