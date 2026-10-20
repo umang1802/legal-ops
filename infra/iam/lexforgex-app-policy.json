@@ -1,0 +1,24 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadAndCreateAppParameters",
+      "Effect": "Allow",
+      "Action": ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath", "ssm:PutParameter"],
+      "Resource": "arn:aws:ssm:ap-south-1:*:parameter/lexforgex/prod/*"
+    },
+    {
+      "Sid": "DecryptSecureStringsViaSsm",
+      "Effect": "Allow",
+      "Action": ["kms:Decrypt", "kms:Encrypt", "kms:GenerateDataKey"],
+      "Resource": "*",
+      "Condition": { "StringEquals": { "kms:ViaService": "ssm.ap-south-1.amazonaws.com" } }
+    },
+    {
+      "Sid": "SendEmailAsLexforgex",
+      "Effect": "Allow",
+      "Action": ["ses:SendEmail", "ses:SendRawEmail"],
+      "Resource": ["arn:aws:ses:ap-south-1:*:identity/*", "arn:aws:ses:ap-south-1:*:configuration-set/*"]
+    }
+  ]
+}
