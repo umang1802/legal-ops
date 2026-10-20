@@ -39,8 +39,32 @@ Read this first, then `infra/docs/deploy-runbook.md`, which has the step-by-step
   - the admin script creates an admin
   - platform login works through the proxy (cookie `Secure`, path `/api/v1/platform`)
 
-### Not started (that's you)
-Runbook **Stages 1–9**: IAM role → security groups → RDS → SSM parameters → EC2 + Elastic IP → GoDaddy `app` A record → first deploy → first admin → email.
+### Deployment progress (updated 21 Oct 2026 by Aakash, with Claude Code)
+
+AWS resources were created through the console, using the runbook names. Status below was reported by Aakash after doing each stage; it has **not** been independently re-checked by a tool. First step for whoever picks this up: open the console in ap-south-1 and confirm each resource exists as described.
+
+| Stage | What | Status | Notes |
+|---|---|---|---|
+| 0 | `feature/aws-deploy` merged to `main` | **Done** | Deploy files are on `main` (`1114f7b`, `0544406`) |
+| 1 | IAM role `lexforgex-app-role` + inline policy `lexforgex-app-access` | **Done** | Role has `AmazonSSMManagedInstanceCore`; inline policy is `infra/iam/lexforgex-app-policy.json` |
+| 2 | Security groups | **Done** | `lexforgex-app-sg` = `sg-0430154b8d0211b3b` (80 and 443 from the internet, no 22). `lexforgex-db-sg` = `sg-0e719cadc62dba35f` (5432 from `lexforgex-app-sg` only) |
+| 3 | RDS `lexforgex-prod` (PostgreSQL 16, `db.t4g.micro`, single-AZ, private) | **Done** | Created from the Dev/Test template. Estimated about $17.95 a month (instance $15.33, storage $2.62). Master password is in Aakash's password manager only. The endpoint is on the RDS console page, not recorded here yet |
+| 4 | SSM parameters under `/lexforgex/prod/` | **Next** | Eight parameters per runbook Stage 4. `DB_PASSWORD` must be a SecureString. Do **not** create `SESSION_SECRET` or `PLATFORM_SECRET_KEY` |
+| 5 | EC2 `lexforgex-prod` + Elastic IP | Not started | Billable. Uses `infra/scripts/bootstrap.sh` as user data |
+| 6 | GoDaddy A record `app` → Elastic IP | Not started | Add before the first deploy |
+| 7 | First deploy over Session Manager | Not started | Needs the deploy key added in GitHub |
+| 8 | First platform admin and checks | Not started | |
+| 9 | Email | **Blocked on purpose** | Keep `EMAIL_PROVIDER=disabled` until section 4 below is built and SES production access is granted |
+
+**Constraints still in force:** single EC2 + RDS, secrets only in SSM, no SSH (Session Manager only), `EMAIL_PROVIDER=disabled`. Ask Umang before changing any of these. Ask the owner before any billable or destructive change that the runbook doesn't list (for example reserved instances, Multi-AZ, a bigger instance, turning off deletion protection).
+
+**Decisions made along the way**
+- Ports 80 and 443 are open to the internet on purpose: users reach the app on 443, and Caddy needs 80 for certificate issuance and the HTTPS redirect. The IPv6 (`::/0`) rules are optional because the server only has an IPv4 Elastic IP.
+- Dev/Test was used as the RDS template. A template only changes form defaults; the settings listed in runbook Stage 3 are what matter.
+- RDS cost was reviewed and left as is. A 1-year reserved instance would save roughly $4–5 a month but is a commitment; revisit after the pilot is confirmed.
+
+### Remaining work (Stages 4–9)
+Runbook **Stages 4–9**: SSM parameters → EC2 + Elastic IP → GoDaddy `app` A record → first deploy → first admin → email.
 
 ---
 
@@ -59,7 +83,7 @@ Runbook **Stages 1–9**: IAM role → security groups → RDS → SSM parameter
 ## 3. Next steps, in order
 
 0. **Get `feature/aws-deploy` merged to `main`.** The server clones `main`, and the scripts live in the repo.
-1. Follow `infra/docs/deploy-runbook.md`, Stages 1–8.
+1. Follow `infra/docs/deploy-runbook.md`. Stages 1–3 are done (see "Deployment progress" above); continue from **Stage 4**, then Stages 5–8.
 2. Add the GoDaddy **A record `app` → the Elastic IP before the first deploy**, or Caddy can't get its certificate. It retries, but it's quicker if DNS is already in place.
 3. After the first deploy, check:
    - `https://app.lexforgex.com/health/ready` shows `{"database":"ok"}`

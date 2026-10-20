@@ -15,6 +15,8 @@ Secrets: SSM Parameter Store /lexforgex/prod/*   Email: SES (ap-south-1)
 
 Expected cost is about **$35–45 a month**. Do every step in **ap-south-1** unless a step says otherwise.
 
+> **Progress (21 Oct 2026):** Stages 1–3 are done (IAM role, security groups, RDS). Continue from **Stage 4**. Resource IDs and decisions are in `infra/docs/HANDOFF.md`, "Deployment progress".
+
 ---
 
 ## Stage 1: IAM role for the server
