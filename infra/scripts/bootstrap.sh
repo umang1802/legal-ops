@@ -11,9 +11,10 @@ dnf -y update
 dnf -y install docker git
 systemctl enable --now docker
 
-# 2 GB swap: the pnpm install + builds need more than the 2 GB of RAM on a t4g.small.
+# 4 GB swap: the pnpm install + builds need more memory than the 1 GB of RAM on a t4g.micro (builds will be slow).
+# If a build is ever killed for lack of memory, resize the instance to t4g.small (stop, change type, start).
 if [ ! -f /swapfile ]; then
-  fallocate -l 2G /swapfile
+  fallocate -l 4G /swapfile
   chmod 600 /swapfile
   mkswap /swapfile
   swapon /swapfile

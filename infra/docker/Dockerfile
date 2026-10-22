@@ -13,8 +13,6 @@ RUN pnpm --filter @legalops/api build && pnpm --filter @legalops/web build
 FROM node:22-alpine AS app
 ENV NODE_ENV=production
 WORKDIR /repo
-# Amazon RDS CA bundle, so the database connection verifies the server certificate (sslmode=verify-full).
-ADD --chmod=644 https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /etc/ssl/rds-global-bundle.pem
 COPY --from=build /repo /repo
 USER node
 CMD ["node", "apps/api/dist/server.js"]

@@ -10,9 +10,31 @@ x-app: &app
     options: { max-size: '10m', max-file: '5' }
 
 services:
+  # PostgreSQL on the same host. No `ports:` on purpose: only containers on this Compose network can reach it.
+  # Data lives in the named volume `pgdata` (on the EC2 root disk). Never run `docker volume prune` or
+  # `docker compose down -v` here: that deletes the database. POSTGRES_* come from /etc/lexforgex/db.env
+  # (written by render-env.sh); this container deliberately does not get the app's other secrets.
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: /etc/lexforgex/db.env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '5' }
+
   api:
     <<: *app
     command: ['node', 'apps/api/dist/server.js']
+    depends_on:
+      postgres: { condition: service_healthy }
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:4000/health/ready']
       interval: 30s
@@ -23,6 +45,8 @@ services:
   worker:
     <<: *app
     command: ['node', 'apps/api/dist/worker.js']
+    depends_on:
+      postgres: { condition: service_healthy }
 
   caddy:
     image: lexforgex-web:latest
@@ -45,6 +69,8 @@ services:
     <<: *app
     restart: 'no'
     profiles: ['tools']
+    depends_on:
+      postgres: { condition: service_healthy }
     working_dir: /repo/packages/db
     command: ['./node_modules/.bin/tsx', 'src/cli.ts', 'migrate']
 
@@ -53,9 +79,12 @@ services:
     <<: *app
     restart: 'no'
     profiles: ['tools']
+    depends_on:
+      postgres: { condition: service_healthy }
     working_dir: /repo/apps/api
     entrypoint: ['./node_modules/.bin/tsx', 'src/scripts/create-platform-admin.ts']
 
 volumes:
+  pgdata: {}
   caddy_data: {}
   caddy_config: {}

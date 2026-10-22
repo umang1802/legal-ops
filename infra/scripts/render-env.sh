@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Writes /etc/lexforgex/app.env from SSM Parameter Store (/lexforgex/prod/*). Never edit app.env by hand:
-# change the parameter in SSM and redeploy. SESSION_SECRET and PLATFORM_SECRET_KEY are generated and stored
-# in SSM on the first run if they don't exist yet; they are never regenerated after that.
+# Writes /etc/lexforgex/app.env (app) and /etc/lexforgex/db.env (Postgres container) from SSM Parameter Store
+# (/lexforgex/prod/*). Never edit them by hand: change the parameter in SSM and redeploy.
+# SESSION_SECRET, PLATFORM_SECRET_KEY and DB_PASSWORD are generated and stored in SSM on the first run if they
+# don't exist yet; they are never regenerated after that. DB_PASSWORD must not change after the first deploy:
+# Postgres only reads it when it first creates its data directory, so a changed value would lock the app out.
 set -euo pipefail
 
 REGION="${AWS_REGION:-ap-south-1}"
 PREFIX="${SSM_PREFIX:-/lexforgex/prod}"
 OUT=/etc/lexforgex/app.env
+DB_OUT=/etc/lexforgex/db.env
 
 get() {
   local v
@@ -38,10 +41,15 @@ ensure_secret() {
 
 urlencode() { python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"; }
 
-DB_HOST=$(require DB_HOST)
-DB_USER=$(require DB_USER)
-DB_PASSWORD=$(require DB_PASSWORD)
+# Postgres runs as the `postgres` container on this host, so these default and need no SSM parameter.
+DB_HOST=$(get DB_HOST); DB_HOST=${DB_HOST:-postgres}
+DB_USER=$(get DB_USER); DB_USER=${DB_USER:-lexforgex_admin}
 DB_NAME=$(get DB_NAME); DB_NAME=${DB_NAME:-lexforgex}
+DB_PASSWORD=$(ensure_secret DB_PASSWORD)
+# Keep it simple and safe to pass through env files and URLs.
+case "$DB_PASSWORD" in
+  ''|*[!A-Za-z0-9]*) echo "ERROR: $PREFIX/DB_PASSWORD must contain only letters and digits (delete the parameter to have a new one generated on a fresh database)" >&2; exit 1 ;;
+esac
 APP_DOMAIN=$(require APP_DOMAIN)
 EMAIL_PROVIDER=$(get EMAIL_PROVIDER); EMAIL_PROVIDER=${EMAIL_PROVIDER:-disabled}
 EMAIL_FROM=$(get EMAIL_FROM); EMAIL_FROM=${EMAIL_FROM:-LexForgeX <notifications@lexforgex.com>}
@@ -61,7 +69,7 @@ APP_DOMAIN=$APP_DOMAIN
 APP_URL=https://$APP_DOMAIN
 CORS_ALLOWED_ORIGINS=https://$APP_DOMAIN
 ACME_EMAIL=$ACME_EMAIL
-DATABASE_URL=postgres://$(urlencode "$DB_USER"):$(urlencode "$DB_PASSWORD")@$DB_HOST:5432/$DB_NAME?sslmode=verify-full&sslrootcert=/etc/ssl/rds-global-bundle.pem
+DATABASE_URL=postgres://$(urlencode "$DB_USER"):$(urlencode "$DB_PASSWORD")@$DB_HOST:5432/$DB_NAME?sslmode=disable
 SESSION_SECRET=$SESSION_SECRET
 PLATFORM_SECRET_KEY=$PLATFORM_SECRET_KEY
 EMAIL_PROVIDER=$EMAIL_PROVIDER
@@ -71,4 +79,14 @@ ENV
 [ -n "$SES_CONFIGURATION_SET" ] && echo "SES_CONFIGURATION_SET=$SES_CONFIGURATION_SET" >> "$tmp"
 mv "$tmp" "$OUT"
 chmod 600 "$OUT"
+
+# Postgres container settings (first start only creates the user/database/password from these).
+tmp=$(mktemp "$DB_OUT.XXXXXX")
+cat > "$tmp" <<ENV
+POSTGRES_USER=$DB_USER
+POSTGRES_PASSWORD=$DB_PASSWORD
+POSTGRES_DB=$DB_NAME
+ENV
+mv "$tmp" "$DB_OUT"
+chmod 600 "$DB_OUT"
 echo "wrote $OUT (email: $EMAIL_PROVIDER, domain: $APP_DOMAIN)"
