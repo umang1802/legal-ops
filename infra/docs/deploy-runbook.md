@@ -3,7 +3,7 @@
 Target: `https://app.lexforgex.com` on one EC2 server in **ap-south-1 (Mumbai)**, with PostgreSQL running in a container on the same server, its data in a Docker volume on the server's encrypted root disk. There is no RDS (changed 22 Oct 2026; see `infra/docs/HANDOFF.md`). Secrets live in SSM Parameter Store, and admin access is through Session Manager (no SSH).
 
 ```
-Internet ──443──► EC2 t4g.micro (Elastic IP) ─ Docker Compose
+Internet ──443──► EC2 t3.micro (Elastic IP) ─ Docker Compose
                    ├─ caddy   HTTPS (Let's Encrypt), serves the web app, proxies /api
                    ├─ api       Node API
                    ├─ worker    reminders and email
@@ -14,7 +14,7 @@ Internet ──443──► EC2 t4g.micro (Elastic IP) ─ Docker Compose
 Secrets: SSM Parameter Store /lexforgex/prod/*   Email: SES (ap-south-1)
 ```
 
-Expected cost is about **$14 a month**. Do every step in **ap-south-1** unless a step says otherwise.
+Expected cost is about **$16–17 a month**. Do every step in **ap-south-1** unless a step says otherwise.
 
 > **Progress (22 Oct 2026):** Stages 1–2 are done (IAM role, security groups). Stage 3 changed: RDS was dropped in favour of Postgres on the EC2 server, so there is nothing to create in AWS for it. The repo's Compose file and scripts are updated for it but have not yet been run end to end; do the backup items in `infra/docs/HANDOFF.md` ("Database change status") before real client data goes in. Resource IDs and decisions are in HANDOFF, "Deployment progress".
 
@@ -68,20 +68,33 @@ Nothing to create in the AWS console for this stage. PostgreSQL 16 runs as a con
 
 ## Stage 5: The server (EC2)
 
-**EC2 → Instances → Launch instances**:
-- Name: `lexforgex-prod`
-- AMI: **Amazon Linux 2023**, architecture **64-bit (Arm)**
-- Instance type: **t4g.micro** (1 GB RAM; if the first build is killed for lack of memory, stop the instance, change the type to `t4g.small`, and start it again. The Elastic IP and disk stay as they are)
-- Key pair: **Proceed without a key pair**. Access is through Session Manager.
-- Network settings → **Edit**: default VPC, any subnet, **Auto-assign public IP: Enable**. Select existing security group **`lexforgex-app-sg`**.
-- Storage: one **30 GiB gp3** root volume (it holds the OS, Docker images and the database). Under Advanced, set **Encrypted: Yes** and **Delete on termination: No**, so the database isn't lost if the instance is terminated by mistake. No second volume.
-- **Advanced details**:
-  - **IAM instance profile:** `lexforgex-app-role`
-  - **Metadata version:** V2 only (token required)
-  - **User data:** paste the whole of `infra/scripts/bootstrap.sh`
-- **Launch instance**.
+Before you start: Stage 4 is done, and `infra/scripts/bootstrap.sh` on `main` is the version with the 4 GB swap. Check the region selector (top right) says **Asia Pacific (Mumbai) ap-south-1**.
 
-Then **EC2 → Elastic IPs → Allocate Elastic IP address → Allocate**, select it → **Actions → Associate** → instance `lexforgex-prod` → **Associate**. Note the IP.
+**Copy the user-data script first** (macOS; run from the repo folder). It puts the whole of `bootstrap.sh` on your clipboard, including the first line `#!/bin/bash`, which must stay:
+```bash
+pbcopy < infra/scripts/bootstrap.sh
+```
+
+**EC2 → Instances → Launch instances**, then fill in the page top to bottom:
+
+| Section | What to choose |
+|---|---|
+| **Name and tags** | Name: `lexforgex-prod` |
+| **Application and OS Images** | Quick Start tab **Amazon Linux** → **Amazon Linux 2023 AMI**. Architecture: **64-bit (x86)**, matching the instance that was actually launched. (If you ever choose a `t4g` type instead, pick **64-bit (Arm)** to match; an image and an instance type must have the same CPU type. `bootstrap.sh` handles both.) |
+| **Instance type** | **t3.micro** (1 GB RAM, x86). If the first build is later killed for lack of memory, stop the instance, change the type to `t3.small` (same CPU type; you can't switch between x86 and Arm on an existing instance), and start it again; the Elastic IP and disk stay as they are. A `t4g.micro` (Arm) is about $2–3 a month cheaper if you ever rebuild. |
+| **Key pair (login)** | **Proceed without a key pair (Not recommended)**. This is intended: there is no SSH, access is through Session Manager. |
+| **Network settings → Edit** | VPC: the **default VPC**. Subnet: **No preference**. **Auto-assign public IP: Enable**. Firewall: **Select existing security group** → `lexforgex-app-sg` (and nothing else). Do not add an SSH rule. |
+| **Configure storage** | One root volume: **30 GiB**, type **gp3**. Open **Advanced** and set **Encrypted: Yes** (default KMS key is fine) and **Delete on termination: No**. Do **not** add a second volume. |
+| **Advanced details** | **IAM instance profile:** `lexforgex-app-role`. **Metadata version:** **V2 only (token required)**. **Termination protection:** **Enable** (free; stops an accidental terminate). **Detailed CloudWatch monitoring:** leave off (it costs extra). Leave the credit specification at its default. **User data:** paste the script (Cmd+V). Leave "User data has already been base64 encoded" unticked. |
+
+Check the **Summary** panel on the right: 1 instance, `t3.micro`, the right security group. Then **Launch instance**.
+
+**After launch**
+1. Wait until **Instance state = Running** and **Status check = 2/2 checks passed** (a few minutes).
+2. Wait a few more minutes. The first-boot script installs Docker and makes the swap file, then writes `/opt/lexforgex/BOOTSTRAPPED`. It can't be checked from the console; you check it in Stage 7.
+3. Select the instance → **Connect → Session Manager**. The **Connect** button is enabled once the SSM agent has registered (it can take 2–5 minutes after launch). If it stays greyed out, check that the instance has the `lexforgex-app-role` profile (**Actions → Security → Modify IAM role**).
+
+**Elastic IP.** **EC2 → Elastic IPs → Allocate Elastic IP address → Allocate**, select it → **Actions → Associate Elastic IP address** → Resource type **Instance**, choose `lexforgex-prod` → **Associate**. Note the IP address. (The temporary public IP the instance got at launch is released when you do this. An Elastic IP costs about $3.65 a month.)
 
 ## Stage 6: DNS (GoDaddy)
 
