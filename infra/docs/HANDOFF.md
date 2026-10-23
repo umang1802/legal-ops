@@ -83,7 +83,8 @@ AWS resources were created through the console, using the runbook names. Status 
 ### Remaining work
 1. **Backups and a restore test** (see the list above). Biggest gap: the database lives only on the server's root disk.
 2. **Commit and push** any uncommitted changes to `bootstrap.sh` and these docs.
-3. **Stage 9, email**: blocked on section 4 below (bounce and complaint handling, alarms, email footer) and SES production access. Keep `EMAIL_PROVIDER=disabled`.
+3. **Firm invites and password resets don't work until email is on** (see section 5). Decide whether to build the invite-link command as a stopgap. The first invited firm's invitation is in the failed state; resend it once email works, or issue a link by hand.
+   **Stage 9, email**: blocked on section 4 below (bounce and complaint handling, alarms, email footer) and SES production access. Keep `EMAIL_PROVIDER=disabled`.
 4. **Cleanup:** delete the unused `lexforgex-db-sg`; confirm no RDS snapshots remain; consider a billing alert at $60 if not already set.
 5. **Housekeeping noticed during the rollout:** the GoDaddy bare-domain forward still goes to `http://` (should be `https://`); product name in the platform UI still says "LegalForgeX" (Track 7).
 
@@ -146,6 +147,7 @@ Items 2–4 are code and ops work, separate from the infrastructure deploy. Trea
 - **`SESSION_SECRET` must never change** once set: changing it signs everyone out. **`PLATFORM_SECRET_KEY` must never change either**: changing it makes every platform admin's TOTP setup undecryptable. `render-env.sh` only generates them when they're missing.
 - **The DB tools refuse `reset` and `seed` when `NODE_ENV=production`.** `deploy.sh` only runs `migrate`.
 - **Migrations are forward-only.** Roll back code only to a commit that works with the current schema: `deploy.sh <commit>`.
+- **With `EMAIL_PROVIDER=disabled`, no email goes out at all, so platform invites and password resets don't arrive.** Found 23 Oct 2026 when the first firm was invited from the platform console. What happens: the invite is queued as a notification, the worker tries to send it, the disabled provider throws a retryable error, and after 5 attempts (retries at 1, 2, 4 and 8 minutes) the notification is marked **failed**. The accept-invite link is created only at send time (`issueInvitationToken` in `apps/api/src/modules/notifications/notifications.service.ts`) and is never stored or logged, so there is no link to recover. The same applies to the "forgot password" flow and to hearing reminders. Options: (a) a small admin command that mints and prints the accept-invite link for a pending invite, to be sent to the partner over a trusted channel (not built yet; whoever opens the link gets owner access to that firm, so treat it as a secret); or (b) wait until email is enabled and use **Resend invite** in the platform console. Do **not** switch `EMAIL_PROVIDER` to `ses` as a shortcut: see section 4, and SES sandbox only delivers to verified addresses anyway. Before enabling email later, review the notification list for old queued items so nothing stale goes to a real client.
 - **Product name:** use **LexForgeX** in anything new. Some log lines still say "LegalOps"; that's harmless, and the rename is Track 7.
 
 ---
