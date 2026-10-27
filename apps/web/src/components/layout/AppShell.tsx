@@ -74,7 +74,7 @@ export function AppShell() {
       <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-line bg-surface lg:flex">
         <div className="flex h-16 items-center gap-2 px-5">
           <Scale className="size-6 text-brand-700" aria-hidden />
-          <span className="text-lg font-semibold tracking-tight">LegalOps</span>
+          <span className="text-lg font-semibold tracking-tight">LexForgeX</span>
         </div>
         <div className="space-y-3 px-3">
           <OrgSwitcher />

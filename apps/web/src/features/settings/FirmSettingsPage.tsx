@@ -182,7 +182,7 @@ export function FirmSettingsPage() {
           {taxMode === 'gst' ? (
             <div className="sm:col-span-2">
               <Alert tone="warning" title="Confirm GST treatment with your CA">
-                Reverse-charge applicability and rates for legal services depend on your clients. LegalOps
+                Reverse-charge applicability and rates for legal services depend on your clients. LexForgeX
                 applies what you configure; it does not give tax advice.
               </Alert>
             </div>

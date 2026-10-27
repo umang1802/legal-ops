@@ -63,7 +63,7 @@ const ReceiptPrintPage = lazy(() =>
 );
 
 const router = createBrowserRouter([
-  // LegalForgeX platform console: its own realm, loaded only when visited.
+  // LexForgeX platform console: its own realm, loaded only when visited.
   { path: '/platform/*', element: <PlatformApp /> },
   {
     element: <RedirectIfAuthed />,

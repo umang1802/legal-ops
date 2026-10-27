@@ -43,7 +43,7 @@ describe('totp', () => {
 
   it('builds an otpauth URL for authenticator apps', () => {
     expect(otpauthUrl('ABC', 'ops@x.test')).toBe(
-      'otpauth://totp/LegalForgeX%20Platform:ops%40x.test?secret=ABC&issuer=LegalForgeX%20Platform&algorithm=SHA1&digits=6&period=30',
+      'otpauth://totp/LexForgeX%20Platform:ops%40x.test?secret=ABC&issuer=LexForgeX%20Platform&algorithm=SHA1&digits=6&period=30',
     );
   });
 });

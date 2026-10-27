@@ -1,4 +1,4 @@
-# LegalForgeX Track 1 — Hearing Updates & Reminders Implementation Plan
+# LexForgeX Track 1 — Hearing Updates & Reminders Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -18,7 +18,7 @@
 - Client summary max length 2000 characters; blank/whitespace-only means "none".
 - Neutral fallback wording, exactly: adjourned → `The hearing on {date} was adjourned.`; completed → `The hearing on {date} was held.` (`{date}` formatted like other dates, e.g. `12 Oct 2026`).
 - Reminder defaults (firm-local time): `hearing_1d_team` −1 day 17:00 → matter team; `hearing_1d_client` −1 day 09:00 → client (exists); `hearing_morning_client` same day 07:30 → client; `hearing_morning_lead` same day 08:00 → lead (exists). Existing 7-day and 3-day reminders unchanged.
-- Any new user-visible string says "LegalForgeX", never "LegalOps".
+- Any new user-visible string says "LexForgeX", never "LegalOps".
 - Run before each checkpoint: `pnpm --filter @legalops/api test`, `pnpm typecheck`, `pnpm lint` — all clean.
 
 **Deviation from spec, deliberate:** spec §5.4 names the last-update variables `case.last_client_update`; they live in a separate `previous.*` group because `buildContext` rebuilds the `case` group after the hearing group and would overwrite them. Spec is updated in Task 6.
@@ -121,7 +121,7 @@ Expected: FAIL — the first two fail with a 422 (`clientSummary` is rejected by
 - [ ] **Step 3: Write the migration** — create `packages/db/migrations/0006_hearing_client_updates.sql`:
 
 ```sql
--- LegalForgeX Track 1 (spec §3.6, §3.7, §5.4, §5.5).
+-- LexForgeX Track 1 (spec §3.6, §3.7, §5.4, §5.5).
 -- hearings.outcome is the team's internal note; client_summary is the only hearing text a client may see.
 -- Existing outcomes were written for the team, so they are never copied into client_summary.
 ALTER TABLE hearings ADD COLUMN client_summary TEXT;
@@ -214,7 +214,7 @@ Expected: migration applies cleanly; all hearings tests PASS (the test DB is reb
 - [ ] **Step 1: Write the failing tests** — in `apps/api/test/automation.test.ts`, add a new `describe` after `'automations: hearing outcome (pilot test 3)'`:
 
 ```ts
-describe('automations: what the client is told (LegalForgeX T1)', () => {
+describe('automations: what the client is told (LexForgeX T1)', () => {
   const complete = (s: Session, id: string, body: object) => post(s, `/hearings/${id}/complete`, body);
 
   it('outcome email carries the client summary, never the internal note', async () => {
@@ -434,7 +434,7 @@ describe('audience scoping', () => {
 });
 ```
 
-Append to the `'what the client is told (LegalForgeX T1)'` describe in `apps/api/test/automation.test.ts`:
+Append to the `'what the client is told (LexForgeX T1)'` describe in `apps/api/test/automation.test.ts`:
 
 ```ts
   it('legacy override: a client template row still containing {{hearing.outcome}} renders it blank', async () => {
@@ -648,7 +648,7 @@ In `apps/api/test/automation.test.ts`:
 - L40: change the expected planned keys to `['hearing_3d_team', 'hearing_1d_client', 'hearing_1d_team', 'hearing_morning_client', 'hearing_morning_lead']`.
 - L68: change `toHaveLength(4); // 7d, 3d, 1d, morning` to `toHaveLength(6); // 7d, 3d, 1d client, 1d team, morning client, morning lead`.
 
-Add to `'what the client is told (LegalForgeX T1)'`:
+Add to `'what the client is told (LexForgeX T1)'`:
 
 ```ts
   it('reminder matrix: lawyer and client are each reminded the day before and on the day', async () => {
@@ -729,7 +729,7 @@ Change the import line to `import { query, queryOne, type Db } from '../../db/po
 - [ ] **Step 5: Run the full API suite**
 
 Run: `pnpm --filter @legalops/api test`
-Expected: all PASS, including every test in `'what the client is told (LegalForgeX T1)'` and the updated pilot-test-2 expectations.
+Expected: all PASS, including every test in `'what the client is told (LexForgeX T1)'` and the updated pilot-test-2 expectations.
 
 - [ ] **Step 6: Checkpoint** — `pnpm typecheck && pnpm lint`. Suggested message: `feat(automations): day-before team and on-the-day client reminders; seed defaults once per key`.
 

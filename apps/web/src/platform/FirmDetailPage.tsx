@@ -116,7 +116,7 @@ export function FirmDetailPage() {
             <CardHeader title="Notes" />
             <CardBody>
               <TextAreaField
-                label="Payment and account notes (LegalForgeX team only)"
+                label="Payment and account notes (LexForgeX team only)"
                 rows={5}
                 value={notes ?? ''}
                 onChange={(e) => setNotes(e.target.value)}

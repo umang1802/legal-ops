@@ -25,7 +25,7 @@ const envSchema = z.object({
   TRUST_PROXY: z.coerce.number().int().min(0).default(0),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   EMAIL_PROVIDER: z.enum(['smtp', 'ses', 'disabled']).default('disabled'),
-  EMAIL_FROM: z.string().default('LegalOps <notifications@legalops.local>'),
+  EMAIL_FROM: z.string().default('LexForgeX <notifications@lexforgex.local>'),
   SMTP_URL: z.string().default('smtp://localhost:1025'),
   AWS_REGION: z.string().default('ap-south-1'),
   SES_CONFIGURATION_SET: z.string().optional(),

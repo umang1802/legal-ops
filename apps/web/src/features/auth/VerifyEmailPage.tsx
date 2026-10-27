@@ -31,7 +31,7 @@ export function VerifyEmailPage() {
         </Alert>
       )}
       <Link to="/" className="mt-5 inline-block text-sm font-medium text-brand-700 hover:underline">
-        Continue to LegalOps
+        Continue to LexForgeX
       </Link>
     </AuthLayout>
   );

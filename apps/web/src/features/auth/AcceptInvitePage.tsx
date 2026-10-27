@@ -56,7 +56,7 @@ export function AcceptInvitePage() {
   }
 
   return (
-    <AuthLayout title="Join your firm on LegalOps" subtitle="Set up your account to accept the invitation.">
+    <AuthLayout title="Join your firm on LexForgeX" subtitle="Set up your account to accept the invitation.">
       <form onSubmit={form.handleSubmit((v) => accept.mutate(v))} className="space-y-4" noValidate>
         {accept.error ? (
           <Alert tone="danger">
@@ -76,7 +76,7 @@ export function AcceptInvitePage() {
           label="Password"
           type="password"
           autoComplete="new-password"
-          hint="At least 10 characters. Ignored if you already have a LegalOps account."
+          hint="At least 10 characters. Ignored if you already have a LexForgeX account."
           error={errors.password?.message}
           {...form.register('password')}
         />

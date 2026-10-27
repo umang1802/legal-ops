@@ -3,7 +3,7 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 const STEP_MS = 30_000;
 const DIGITS = 6;
-const ISSUER = 'LegalForgeX Platform';
+const ISSUER = 'LexForgeX Platform';
 
 export function base32Encode(buf: Buffer): string {
   let bits = 0;

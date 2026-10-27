@@ -1,4 +1,4 @@
-# LegalOps — Decision Log
+# LexForgeX — Decision Log
 
 Decisions that override or clarify `prd/`. When the PRD and this file disagree, this file wins.
 
@@ -37,7 +37,7 @@ Decisions that override or clarify `prd/`. When the PRD and this file disagree, 
 
 - They currently track hearings and client updates by **phone calls and messages**, with no tool.
 - What this means:
-  - The baseline to beat is "manual calls/messages", so manual hearing entry in LegalOps is already an improvement, not a regression. Court sync stays out of V1.
+  - The baseline to beat is "manual calls/messages", so manual hearing entry in LexForgeX is already an improvement, not a regression. Court sync stays out of V1.
   - Their clients are used to messaging. Email-only V1 is still the plan, but WhatsApp is the **first post-pilot channel**. `NotificationChannel` must be real, not a stub.
   - Baseline metrics to start collecting now: client update calls/messages per week, payment follow-ups per week, missed or late hearing prep.
 
@@ -96,7 +96,7 @@ Decisions that override or clarify `prd/`. When the PRD and this file disagree, 
 
 ## D-013 · Client-facing hearing text and once-per-key automation defaults (2026-10-17)
 
-(D-012, the Postgres-polling worker, is still to be written up; LegalForgeX Track 6.)
+(D-012, the Postgres-polling worker, is still to be written up; LexForgeX Track 6.)
 
 - `hearings.outcome` is the team's internal note. `hearings.client_summary` is the only hearing text a client may see; blank means a neutral line ("The hearing on {date} was adjourned/held.").
 - Template variables flagged `internalOnly` in `@legalops/types` are stripped before any client-bound render (`varsForAudience`) and rejected when saving a client template. A client recipient is always rendered as client audience.
@@ -107,7 +107,7 @@ Decisions that override or clarify `prd/`. When the PRD and this file disagree, 
 
 ## D-014 · Platform realm and firm suspension (2026-10-17)
 
-- LegalForgeX team members are `platform_admins`, a realm separate from firm users: own table, session table, cookie (`lf_psid`, path `/api/v1/platform`, SameSite=Strict), CSRF secret and router mounted before the firm router. Password + TOTP (RFC 6238, replay-guarded) on every sign-in; 30-minute idle and 12-hour absolute session limits; a session that hasn't passed the second factor lasts 10 minutes. Five wrong codes lock that admin's second factor for 15 minutes and end their password-only sessions (per admin, not per IP). Failed passwords, failed codes and lockouts are in `platform_audit_logs`. Admins are created or reset only by `pnpm --filter @legalops/api platform:create-admin`.
+- LexForgeX team members are `platform_admins`, a realm separate from firm users: own table, session table, cookie (`lf_psid`, path `/api/v1/platform`, SameSite=Strict), CSRF secret and router mounted before the firm router. Password + TOTP (RFC 6238, replay-guarded) on every sign-in; 30-minute idle and 12-hour absolute session limits; a session that hasn't passed the second factor lasts 10 minutes. Five wrong codes lock that admin's second factor for 15 minutes and end their password-only sessions (per admin, not per IP). Failed passwords, failed codes and lockouts are in `platform_audit_logs`. Admins are created or reset only by `pnpm --filter @legalops/api platform:create-admin`.
 - Firms are created by a platform invite (`status = 'invited'`) and become `active` when the owner accepts. Payment is tracked manually in `platform_notes` (never exposed to firms; audit records only that notes changed).
 - Suspended firms are read-only: one middleware on the firm router (before every sub-router, so new routes are covered by construction) returns `FIRM_SUSPENDED` for writes except logout/switch-organization; the worker records due actions as skipped ("Firm suspended") and never resends them; reactivation also skips anything that fell due during the suspension but was never claimed. Token-based account flows (password reset, email verification, invite acceptance) stay allowed. The web app hides non-read controls through `canAct(me, permission)` in `apps/web/src/lib/auth.ts` (use it instead of `can(me.role, …)` for any UI control) and shows a banner.
 - TOTP enrolment shows the key and an `otpauth://` link; no QR image (deferred).

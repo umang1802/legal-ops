@@ -21,7 +21,7 @@ export function RequireAuth() {
     return (
       <div className="grid min-h-dvh place-items-center p-6 text-center">
         <div>
-          <p className="font-medium">We couldn’t reach LegalOps.</p>
+          <p className="font-medium">We couldn’t reach LexForgeX.</p>
           <p className="mt-1 text-sm text-muted">Check your connection and try again.</p>
           <Button className="mt-4" onClick={() => void refetch()}>
             Retry

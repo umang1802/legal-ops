@@ -95,7 +95,7 @@ export function createApp(deps: Deps, opts: { rateLimits?: Partial<RateLimits> }
   api.use('/email-templates', templatesRouter(deps));
   api.use('/workflows', workflowsRouter(deps));
   if (deps.env.NODE_ENV !== 'production') api.use('/dev', devRouter(deps));
-  // Platform realm (LegalForgeX team): own cookie, session, CSRF and MFA; never runs firm middleware.
+  // Platform realm (LexForgeX team): own cookie, session, CSRF and MFA; never runs firm middleware.
   app.use('/api/v1/platform', platformRouter(deps, { ...DEFAULT_LIMITS, ...opts.rateLimits }));
   app.use('/api/v1', api);
 

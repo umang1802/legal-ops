@@ -29,7 +29,7 @@ export function PlatformLoginPage() {
   return (
     <div className="grid min-h-dvh place-items-center bg-slate-950 px-4">
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-        <p className="text-xs font-semibold tracking-wider text-slate-500 uppercase">LegalForgeX Platform</p>
+        <p className="text-xs font-semibold tracking-wider text-slate-500 uppercase">LexForgeX Platform</p>
         <h1 className="mt-1 text-xl font-semibold">{me ? 'Two-factor sign-in' : 'Sign in'}</h1>
         {error ? (
           <div className="mt-4">
@@ -63,7 +63,7 @@ export function PlatformLoginPage() {
             {!me.mfaEnrolled && enrol.data ? (
               <div className="space-y-2 rounded-lg border border-line p-3 text-sm">
                 <p>
-                  Add LegalForgeX Platform to your authenticator app with this key, then enter the code it
+                  Add LexForgeX Platform to your authenticator app with this key, then enter the code it
                   shows.
                 </p>
                 <p className="font-mono text-base tracking-wider break-all select-all">

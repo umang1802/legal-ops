@@ -38,7 +38,7 @@ async function pass() {
 }
 
 async function loop() {
-  log.info({ workerId, email: deps.email.name, pollMs: env.WORKER_POLL_MS }, 'LegalOps worker started');
+  log.info({ workerId, email: deps.email.name, pollMs: env.WORKER_POLL_MS }, 'LexForgeX worker started');
   while (!stopping) {
     try {
       await pass();

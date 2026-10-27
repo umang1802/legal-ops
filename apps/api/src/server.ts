@@ -10,7 +10,7 @@ const log = pino({ level: env.LOG_LEVEL });
 const pool = createPool(env.DATABASE_URL);
 const app = createApp({ pool, env, log, courts: new NoopCourtProvider(), email: createEmailProvider(env) });
 
-const server = app.listen(env.PORT, () => log.info({ port: env.PORT }, 'LegalOps API listening'));
+const server = app.listen(env.PORT, () => log.info({ port: env.PORT }, 'LexForgeX API listening'));
 
 const shutdown = (signal: string) => {
   log.info({ signal }, 'shutting down');

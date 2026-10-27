@@ -22,7 +22,7 @@ export function PlatformShell() {
     <div className="min-h-dvh bg-slate-50">
       <header className="bg-slate-950 text-white">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
-          <span className="font-semibold">LegalForgeX Platform</span>
+          <span className="font-semibold">LexForgeX Platform</span>
           <nav className="flex gap-1">
             <NavLink to="/platform/firms" className={link}>
               Firms

@@ -148,7 +148,7 @@ export function ClientFormSheet({
       {duplicates ? (
         <div className="space-y-3">
           <Alert tone="warning" title="This may be an existing client">
-            LegalOps never merges records. Open the existing client, or create a separate record if this is a
+            LexForgeX never merges records. Open the existing client, or create a separate record if this is a
             different person or company.
           </Alert>
           <ul className="divide-y divide-line rounded-lg border border-line">

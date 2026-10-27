@@ -69,6 +69,6 @@ export function emailLayout(bodyHtml: string, firm: { name: string; email: strin
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid #e3e6eb;border-radius:12px">
 <tr><td style="padding:20px 24px;border-bottom:1px solid #e3e6eb;font-weight:600;font-size:16px;color:#1e3a8a">${escapeHtml(firm.name)}</td></tr>
 <tr><td style="padding:20px 24px;font-size:15px;line-height:1.55">${bodyHtml}</td></tr>
-<tr><td style="padding:16px 24px;border-top:1px solid #e3e6eb;font-size:12px;color:#6b7280">${escapeHtml(firm.name)}${contact ? ` · ${contact}` : ''}<br>Sent via LegalOps</td></tr>
+<tr><td style="padding:16px 24px;border-top:1px solid #e3e6eb;font-size:12px;color:#6b7280">${escapeHtml(firm.name)}${contact ? ` · ${contact}` : ''}<br>Sent via LexForgeX</td></tr>
 </table></td></tr></table></body></html>`;
 }

@@ -24,7 +24,7 @@ async function handleSystemEvent(deps: Deps, db: Db, event: OutboxEvent, now: Da
     });
   }
   if (event.event_type === 'MEMBER_INVITED' && p.invitationId && p.email) {
-    // Platform invites (LegalForgeX team → firm owner) use their own template and greet the partner by first name.
+    // Platform invites (LexForgeX team → firm owner) use their own template and greet the partner by first name.
     const platformInvite = (event.payload as Record<string, unknown>).platformInvite === true;
     const inviter = await queryOne<{ name: string }>(
       db,

@@ -1,20 +1,20 @@
-# LegalForgeX Phase 1 — Design Spec
+# LexForgeX Phase 1 — Design Spec
 
 **Date:** 2026-10-17
 **Status:** Draft for review
-**Codebase:** `legal-ops/` (LegalOps, Phases 1–5) — LegalForgeX is a rebrand and evolution of it, not a rewrite.
+**Codebase:** `legal-ops/` (LegalOps, Phases 1–5) — LexForgeX is a rebrand and evolution of it, not a rewrite.
 **Pilot firm:** Vidhimeya
 
 ---
 
 ## 1. Intent
 
-LegalForgeX is a multi-tenant practice-management product for Indian law firms and independent lawyers. Phase 1 makes it sellable to the first handful of paying firms:
+LexForgeX is a multi-tenant practice-management product for Indian law firms and independent lawyers. Phase 1 makes it sellable to the first handful of paying firms:
 
-- LegalForgeX's team negotiates and collects payment **offline**, then invites the firm.
+- LexForgeX's team negotiates and collects payment **offline**, then invites the firm.
 - The firm onboards itself, invites its team (RBAC), adds clients and cases, assigns cases, records hearing outcomes.
 - Lawyers and clients get automatic hearing reminders carrying the latest case update.
-- Each firm sees its own branding on a shared LegalForgeX domain.
+- Each firm sees its own branding on a shared LexForgeX domain.
 
 **Success criteria**
 
@@ -23,7 +23,7 @@ LegalForgeX is a multi-tenant practice-management product for Indian law firms a
 3. For every scheduled hearing: the lead lawyer and team are reminded the day before and on the day; the client is reminded the day before and on the day; each reminder includes the latest update appropriate to the recipient.
 4. A firm can hide any non-core case field without losing data; it can filter its cases by filterable fields.
 5. A suspended firm can read and export everything but change nothing, and receives no reminders; reactivation sends nothing stale.
-6. Every screen carries the firm's logo and accent colour; the product name shown everywhere is LegalForgeX.
+6. Every screen carries the firm's logo and accent colour; the product name shown everywhere is LexForgeX.
 
 ---
 
@@ -35,7 +35,7 @@ LegalForgeX is a multi-tenant practice-management product for Indian law firms a
 | L-02 | No self-signup, no trial, no payment gateway in Phase 1 | Payment is negotiated manually; a platform admin invites the firm after payment. |
 | L-03 | Platform super-admin is a **separate auth realm in the same app** | Separate `platform_admins` table, session cookie, login URL and API namespace. Firm users can never hold platform power; platform admins never hold a firm session. TOTP 2FA mandatory. |
 | L-04 | Platform tooling = invite + suspend/reactivate + notes + field-request inbox + audit log | Suspension is the only enforcement lever while billing is manual; notes stand in for a billing system. |
-| L-05 | White-label = **firm branding only** on a shared domain | Logo, accent colour, email sender name, reply-to; "Powered by LegalForgeX". No custom domains, no resellers. |
+| L-05 | White-label = **firm branding only** on a shared domain | Logo, accent colour, email sender name, reply-to; "Powered by LexForgeX". No custom domains, no resellers. |
 | L-06 | Case form = **code-defined comprehensive master form**, per case type | Firms can only **hide** non-core fields/sections (data retained). New fields are requested in-app and added to the master form for everyone in a release. No firm-side field builder. |
 | L-07 | Extra case fields stored in **one JSONB column** (`cases.details`) validated against the code registry | No migration per field; GIN index for filters, targeted expression indexes for hot filters. |
 | L-08 | Filtering and search on master-form fields | Fields flagged `filterable` appear as list filters; text fields are searchable. |
@@ -236,7 +236,7 @@ The registry ships with a comprehensive Indian master form: shared sections (fil
    - **Resend:** new token, previous token voided, expiry reset. **Revoke:** invitation revoked; organization remains `invited` and can be re-invited to a corrected email.
 2. Partner opens link (`/accept-invite?token=…`):
    - New email → set name + password.
-   - Email already a LegalForgeX user → "Sign in to accept"; on success the firm is added to their org switcher.
+   - Email already a LexForgeX user → "Sign in to accept"; on success the firm is added to their org switcher.
    - In one transaction: invitation accepted, membership `owner` created, organization → `active`, default workflows and templates seeded. Double-accept is a no-op returning the existing state.
 3. First login as owner of a firm whose onboarding is incomplete → `/setup` wizard:
    1. Firm details (name prefilled; legal name, address, state, GSTIN, tax mode)
@@ -289,7 +289,7 @@ The registry ships with a comprehensive Indian master form: shared sections (fil
 
 ### 6.1 Platform console (`/platform/*`)
 
-Distinct dark shell headed "LegalForgeX Platform".
+Distinct dark shell headed "LexForgeX Platform".
 
 - **Login → TOTP** (enrolment forced on first login; QR + manual key; 6-digit verify).
 - **Firms list:** name, status chip, owner, users, cases, last activity; search; **Invite firm**.
@@ -313,11 +313,11 @@ Distinct dark shell headed "LegalForgeX Platform".
 - Case list: filter bar with removable chips.
 - Record outcome sheet: three fields.
 - Suspended: global banner; create/edit controls disabled with tooltip.
-- Branding: logo in sidebar, invoices, receipts, emails; firm accent colour applied to primary buttons, active nav, links; "Powered by LegalForgeX" footer. Login page stays LegalForgeX-branded.
+- Branding: logo in sidebar, invoices, receipts, emails; firm accent colour applied to primary buttons, active nav, links; "Powered by LexForgeX" footer. Login page stays LexForgeX-branded.
 
 ### 6.4 Rebrand
 
-Replace user-visible "LegalOps" with "LegalForgeX": `index.html` title, app shell, auth pages, email layout/footers, print pages, README, docs. Package scope and infra names unchanged (L-14).
+Replace user-visible "LegalOps" with "LexForgeX": `index.html` title, app shell, auth pages, email layout/footers, print pages, README, docs. Package scope and infra names unchanged (L-14).
 
 ### 6.5 Design consistency
 
@@ -346,7 +346,7 @@ Platform routes are mounted on a separate router with its own session middleware
 
 - `firm_suspended` (403) — web shows banner and a toast on any blocked action; no retry.
 - `validation_failed` (422) — field-path errors for `details.*`, rendered inline on the full-page form.
-- Invite token expired/revoked/used → dedicated page with "Ask LegalForgeX for a new invite".
+- Invite token expired/revoked/used → dedicated page with "Ask LexForgeX for a new invite".
 - Logo upload: wrong type/size → 422 with message; storage failure → 503, existing logo unchanged.
 - Platform session without MFA → 401 `mfa_required`; web redirects to TOTP step.
 - Email send failures: existing retry/backoff in the notifications module; failed client updates remain visible in Communication centre.

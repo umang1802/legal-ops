@@ -47,7 +47,7 @@ export function CommunicationPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Communication" description="Every email LegalOps sent or will send, and why." />
+      <PageHeader title="Communication" description="Every email LexForgeX sent or will send, and why." />
       <Tabs
         label="Filter messages"
         items={FILTERS.map((f) => ({ ...f, badge: f.key === 'awaiting_approval' && pendingCount ? pendingCount : undefined }))}

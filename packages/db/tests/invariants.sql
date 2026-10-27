@@ -127,7 +127,7 @@ SELECT pg_temp.expect_fail($$INSERT INTO notifications (organization_id, channel
   VALUES ('a0000000-0000-0000-0000-000000000001', 'email', 'x', 'client', 'a1000000-0000-0000-0000-000000000001', 'sent')$$,
   'notification SENT with no provider message id');
 
--- Platform realm (LegalForgeX T2)
+-- Platform realm (LexForgeX T2)
 SELECT pg_temp.expect_fail($$UPDATE organizations SET status = 'deleted' WHERE id = 'a0000000-0000-0000-0000-000000000001'$$,
   'organization status outside invited/active/suspended');
 INSERT INTO platform_admins (id, email, name, password_hash)

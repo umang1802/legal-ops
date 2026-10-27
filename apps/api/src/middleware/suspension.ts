@@ -23,5 +23,5 @@ const ALLOWED = new Set([
 export function blockWritesWhenSuspended(req: Request, _res: Response, next: NextFunction): void {
   if (SAFE.has(req.method) || req.auth?.orgStatus !== 'suspended') return next();
   if (ALLOWED.has(`${req.method} ${req.path}`)) return next();
-  next(new AppError(403, 'FIRM_SUSPENDED', 'This account is suspended, so changes can’t be saved. Contact LegalForgeX.'));
+  next(new AppError(403, 'FIRM_SUSPENDED', 'This account is suspended, so changes can’t be saved. Contact LexForgeX.'));
 }

@@ -40,7 +40,7 @@ describe('platform: firms', () => {
     await tick({ ...baseDeps, email } as Deps, new Date());
     const [m] = email.sent;
     expect(m!.to).toBe('partner@vidhimeya.test');
-    expect(m!.subject).toBe('Set up Vidhimeya on LegalForgeX');
+    expect(m!.subject).toBe('Set up Vidhimeya on LexForgeX');
     expect(m!.text).toMatch(/Hello Asha/);
     expect(m!.text).toMatch(/accept-invite\?token=/);
     const audit = await s.agent.get(`${P}/audit-logs`).query({ organizationId: firm.id });

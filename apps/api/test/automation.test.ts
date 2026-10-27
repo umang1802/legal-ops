@@ -146,7 +146,7 @@ describe('automations: hearing outcome (pilot test 3)', () => {
   });
 });
 
-describe('automations: what the client is told (LegalForgeX T1)', () => {
+describe('automations: what the client is told (LexForgeX T1)', () => {
   const complete = (s: Session, id: string, body: object) => post(s, `/hearings/${id}/complete`, body);
 
   it('outcome email carries the client summary, never the internal note', async () => {

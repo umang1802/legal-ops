@@ -35,7 +35,7 @@ export function AutomationsPage() {
     <div className="space-y-4">
       <PageHeader
         title="Automations"
-        description="Reminders and emails LegalOps sends for you. Switch any of them off, or test them against a real record."
+        description="Reminders and emails LexForgeX sends for you. Switch any of them off, or test them against a real record."
         actions={
           <>
             <Link to="/settings/email-templates" className="inline-flex h-10 items-center rounded-lg px-3 text-sm font-medium text-brand-700 hover:bg-subtle">

@@ -1,8 +1,8 @@
-# LegalForgeX Track 2 — Platform Realm Implementation Plan
+# LexForgeX Track 2 — Platform Realm Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give the LegalForgeX team a separately authenticated platform console (password + TOTP) from which they invite a firm's owner, keep payment notes, and suspend or reactivate a firm, with suspended firms enforced read-only in the API, the worker and the web app.
+**Goal:** Give the LexForgeX team a separately authenticated platform console (password + TOTP) from which they invite a firm's owner, keep payment notes, and suspend or reactivate a firm, with suspended firms enforced read-only in the API, the worker and the web app.
 
 **Architecture:** A second auth realm lives in the same Express app under `/api/v1/platform`, mounted **before** the firm router with its own cookie (`lf_psid`, scoped to path `/api/v1/platform`), session table, CSRF secret and MFA gate. The firm router never sees the platform cookie and the platform router never reads the firm cookie. Firm suspension is one middleware on the firm router plus one check in the worker. Owner invites reuse the existing `invitations` table and the existing invite email path (`MEMBER_INVITED` → `sensitive.member_invite`).
 
@@ -22,7 +22,7 @@
 - Owner invitation valid **7 days** (existing `INVITE_TTL_DAYS`).
 - Suspended firm: every non-`GET`/`HEAD`/`OPTIONS` firm request → `403 { error: { code: 'FIRM_SUSPENDED' } }`, except `POST /auth/logout`, `POST /auth/switch-organization`, `POST /auth/login`. Worker skips due actions with reason `Firm suspended`. Data is never deleted.
 - Firm APIs never return `platform_notes` or `suspended_reason`.
-- New user-visible strings say "LegalForgeX".
+- New user-visible strings say "LexForgeX".
 - Before each checkpoint: `pnpm --filter @legalops/api exec vitest run`, `pnpm typecheck`, `pnpm lint` clean. Final task: `pnpm test`.
 
 **Deliberate deviations from the spec (rule here, not mid-task):**
@@ -38,7 +38,7 @@
 2. **A TOTP code replayed within its validity window** (shoulder-surfed or intercepted) — expected: the second use of the same code is rejected even though it is still within ±30 s. Test: Task 3 step 1 (`replay`).
 3. **A suspended firm's user who belongs to another, active firm** — expected: they can still switch to the active firm and work there; only the suspended firm is read-only. Test: Task 5 step 1 (`multi-firm user`).
 4. **Reactivation after reminders fell due during suspension** — expected: nothing stale is sent on reactivation; future reminders resume. Test: Task 5 step 1 (`reactivation`).
-5. **Inviting a firm whose partner email already belongs to an existing LegalForgeX user** — expected: the invite is created; accepting adds that user as owner of the new firm without changing their password, and the firm becomes `active` exactly once. Test: Task 4 step 1 (`existing user`).
+5. **Inviting a firm whose partner email already belongs to an existing LexForgeX user** — expected: the invite is created; accepting adds that user as owner of the new firm without changing their password, and the firm becomes `active` exactly once. Test: Task 4 step 1 (`existing user`).
 
 ---
 
@@ -82,7 +82,7 @@
 - [ ] **Step 1: Write the failing invariants** — insert before `ROLLBACK;` in `packages/db/tests/invariants.sql`:
 
 ```sql
--- Platform realm (LegalForgeX T2)
+-- Platform realm (LexForgeX T2)
 SELECT pg_temp.expect_fail($$UPDATE organizations SET status = 'deleted' WHERE id = 'a0000000-0000-0000-0000-000000000001'$$,
   'organization status outside invited/active/suspended');
 INSERT INTO platform_admins (id, email, name, password_hash)
@@ -105,13 +105,13 @@ Expected: FAIL — `relation "platform_admins" does not exist` (the first `expec
 - [ ] **Step 3: Write the migration** — `packages/db/migrations/0007_platform_realm.sql`:
 
 ```sql
--- LegalForgeX Track 2: platform realm (spec §3.1–3.3, §5.2).
+-- LexForgeX Track 2: platform realm (spec §3.1–3.3, §5.2).
 
 ALTER TABLE organizations
   ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('invited', 'active', 'suspended')),
   ADD COLUMN suspended_at TIMESTAMPTZ,
   ADD COLUMN suspended_reason TEXT,
-  ADD COLUMN platform_notes TEXT,               -- LegalForgeX team only; never returned by firm APIs
+  ADD COLUMN platform_notes TEXT,               -- LexForgeX team only; never returned by firm APIs
   ADD CONSTRAINT ck_org_suspension CHECK ((status = 'suspended') = (suspended_at IS NOT NULL));
 CREATE INDEX idx_organizations_status ON organizations(status);
 
@@ -165,8 +165,8 @@ ALTER TABLE invitations
 
 INSERT INTO email_templates (organization_id, template_key, name, event_type, audience, subject_template, html_body, text_body) VALUES
 (NULL, 'firm_owner_invite', 'Firm owner invitation', 'MEMBER_INVITED', 'internal',
- 'Set up {{firm.name}} on LegalForgeX',
- '<p>Hello {{recipient.first_name}},</p><p>Your LegalForgeX workspace for <strong>{{firm.name}}</strong> is ready. Accept the invitation to set your password and finish setting up your firm.</p><p><a href="{{links.accept_invite}}">Set up your firm</a> (the link expires in 7 days).</p><p>If you weren’t expecting this, you can ignore this email.</p>',
+ 'Set up {{firm.name}} on LexForgeX',
+ '<p>Hello {{recipient.first_name}},</p><p>Your LexForgeX workspace for <strong>{{firm.name}}</strong> is ready. Accept the invitation to set your password and finish setting up your firm.</p><p><a href="{{links.accept_invite}}">Set up your firm</a> (the link expires in 7 days).</p><p>If you weren’t expecting this, you can ignore this email.</p>',
  NULL);
 ```
 
@@ -247,7 +247,7 @@ describe('totp', () => {
 
   it('builds an otpauth URL for authenticator apps', () => {
     expect(otpauthUrl('ABC', 'ops@x.test')).toBe(
-      'otpauth://totp/LegalForgeX%20Platform:ops%40x.test?secret=ABC&issuer=LegalForgeX%20Platform&algorithm=SHA1&digits=6&period=30',
+      'otpauth://totp/LexForgeX%20Platform:ops%40x.test?secret=ABC&issuer=LexForgeX%20Platform&algorithm=SHA1&digits=6&period=30',
     );
   });
 });
@@ -299,7 +299,7 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 const STEP_MS = 30_000;
 const DIGITS = 6;
-const ISSUER = 'LegalForgeX Platform';
+const ISSUER = 'LexForgeX Platform';
 
 export function base32Encode(buf: Buffer): string {
   let bits = 0;
@@ -691,7 +691,7 @@ export const listPlatformAuditSchema = z.object({
 In `apps/api/src/http/context.ts` add, above `declare global`:
 
 ```ts
-/** A platform (LegalForgeX team) session. Never carries a firm; never authorises firm endpoints. */
+/** A platform (LexForgeX team) session. Never carries a firm; never authorises firm endpoints. */
 export type PlatformAuth = { sessionId: string; adminId: string; csrfSecret: string; mfaVerified: boolean };
 ```
 
@@ -943,7 +943,7 @@ export function platformRouter(deps: Deps, limits: RateLimits): Router {
 In `apps/api/src/app.ts`: import `platformRouter`, and mount it **immediately before** `app.use('/api/v1', api);`:
 
 ```ts
-  // Platform realm (LegalForgeX team): own cookie, session, CSRF and MFA; never runs firm middleware.
+  // Platform realm (LexForgeX team): own cookie, session, CSRF and MFA; never runs firm middleware.
   app.use('/api/v1/platform', platformRouter(deps, { ...DEFAULT_LIMITS, ...opts.rateLimits }));
 ```
 
@@ -953,9 +953,9 @@ Note: the platform router must come before `app.use('/api/v1', api)` so the firm
 
 ```ts
 /**
- * Creates a LegalForgeX platform admin, or resets one (--reset: new password, TOTP cleared, sessions revoked).
+ * Creates a LexForgeX platform admin, or resets one (--reset: new password, TOTP cleared, sessions revoked).
  * Prints the one-time password once. Usage:
- *   pnpm --filter @legalops/api platform:create-admin -- --email ops@legalforgex.com --name "Ops" [--reset]
+ *   pnpm --filter @legalops/api platform:create-admin -- --email ops@lexforgex.com --name "Ops" [--reset]
  */
 import { parseArgs } from 'node:util';
 import { emailSchema } from '@legalops/validation';
@@ -1057,7 +1057,7 @@ describe('platform: firms', () => {
     await tick({ ...baseDeps, email } as Deps, new Date());
     const [m] = email.sent;
     expect(m!.to).toBe('partner@vidhimeya.test');
-    expect(m!.subject).toBe('Set up Vidhimeya on LegalForgeX');
+    expect(m!.subject).toBe('Set up Vidhimeya on LexForgeX');
     expect(m!.text).toMatch(/Hello Asha/);
     expect(m!.text).toMatch(/accept-invite\?token=/);
     const audit = await s.agent.get(`${P}/audit-logs`).query({ organizationId: firm.id });
@@ -1402,7 +1402,7 @@ The resend relies on the existing behaviour that sending a `member_invite`-sensi
 
 ```ts
   if (event.event_type === 'MEMBER_INVITED' && p.invitationId && p.email) {
-    // Platform invites (LegalForgeX team → firm owner) use their own template and greet the partner by first name.
+    // Platform invites (LexForgeX team → firm owner) use their own template and greet the partner by first name.
     const platformInvite = (event.payload as Record<string, unknown>).platformInvite === true;
     const inviter = await queryOne<{ name: string }>(
       db,
@@ -1572,7 +1572,7 @@ const ALLOWED = new Set(['POST /auth/logout', 'POST /auth/switch-organization', 
 export function blockWritesWhenSuspended(req: Request, _res: Response, next: NextFunction): void {
   if (SAFE.has(req.method) || req.auth?.orgStatus !== 'suspended') return next();
   if (ALLOWED.has(`${req.method} ${req.path}`)) return next();
-  next(new AppError(403, 'FIRM_SUSPENDED', 'This account is suspended, so changes can’t be saved. Contact LegalForgeX.'));
+  next(new AppError(403, 'FIRM_SUSPENDED', 'This account is suspended, so changes can’t be saved. Contact LexForgeX.'));
 }
 ```
 
@@ -1751,7 +1751,7 @@ export function PlatformLoginPage() {
   return (
     <div className="grid min-h-dvh place-items-center bg-slate-950 px-4">
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-        <p className="text-xs font-semibold tracking-wider text-slate-500 uppercase">LegalForgeX Platform</p>
+        <p className="text-xs font-semibold tracking-wider text-slate-500 uppercase">LexForgeX Platform</p>
         <h1 className="mt-1 text-xl font-semibold">{me ? 'Two-factor sign-in' : 'Sign in'}</h1>
         {error ? (
           <div className="mt-4">
@@ -1770,7 +1770,7 @@ export function PlatformLoginPage() {
           <form className="mt-4 space-y-4" onSubmit={onCode}>
             {!me.mfaEnrolled && enrol.data ? (
               <div className="space-y-2 rounded-lg border border-line p-3 text-sm">
-                <p>Add LegalForgeX Platform to your authenticator app with this key, then enter the code it shows.</p>
+                <p>Add LexForgeX Platform to your authenticator app with this key, then enter the code it shows.</p>
                 <p className="font-mono text-base tracking-wider break-all select-all">{enrol.data.secret.match(/.{1,4}/g)?.join(' ')}</p>
                 <a className="text-brand-700 underline" href={enrol.data.otpauthUrl}>
                   Open in authenticator app
@@ -1813,7 +1813,7 @@ export function PlatformShell() {
     <div className="min-h-dvh bg-slate-50">
       <header className="bg-slate-950 text-white">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
-          <span className="font-semibold">LegalForgeX Platform</span>
+          <span className="font-semibold">LexForgeX Platform</span>
           <nav className="flex gap-1">
             <NavLink to="/platform/firms" className={link}>Firms</NavLink>
             <NavLink to="/platform/audit" className={link}>Audit log</NavLink>
@@ -1919,7 +1919,7 @@ export function FirmsPage() {
   });
   return (
     <>
-      <PageHeader title="Firms" description="Every firm on LegalForgeX." actions={<Button onClick={() => setInviting(true)}>Invite firm</Button>} />
+      <PageHeader title="Firms" description="Every firm on LexForgeX." actions={<Button onClick={() => setInviting(true)}>Invite firm</Button>} />
       <div className="mb-4 flex flex-wrap gap-2">
         <SearchInput className="min-w-0 flex-1" placeholder="Search firms" value={search} onChange={(e) => setSearch(e.target.value)} />
         <select className="rounded-lg border border-line bg-surface px-3 text-sm" value={status} onChange={(e) => setStatus(e.target.value as OrganizationStatus | '')}>
@@ -2042,7 +2042,7 @@ export function FirmDetailPage() {
           <Card>
             <CardHeader title="Notes" />
             <CardBody>
-              <TextAreaField label="Payment and account notes (LegalForgeX team only)" rows={5} value={notes ?? ''} onChange={(e) => setNotes(e.target.value)}
+              <TextAreaField label="Payment and account notes (LexForgeX team only)" rows={5} value={notes ?? ''} onChange={(e) => setNotes(e.target.value)}
                 hint={saved === 'saving' ? 'Saving…' : saved === 'saved' ? 'Saved' : 'Saves automatically. Never shown to the firm.'} />
             </CardBody>
           </Card>
@@ -2187,14 +2187,14 @@ Expected: clean.
 
 - [ ] **Step 10: Browser verification** — create a dev admin (`pnpm --filter @legalops/api platform:create-admin -- --email ops@legalforgex.local --name "Ops"`, note the printed password), then in the preview:
   - `/platform/login`: password → enrolment key shown; add the key to an authenticator *or* compute a code in the terminal (`pnpm --filter @legalops/api exec tsx -e "import('./src/modules/platform/totp.ts').then(t=>console.log(t.totpCode('<KEY>', t.currentStep(Date.now()))))"`); verify → lands on Firms.
-  - Invite firm "Verification Firm" → detail page shows Invited + pending invitation; Mailpit (`http://localhost:8025`) shows "Set up Verification Firm on LegalForgeX".
+  - Invite firm "Verification Firm" → detail page shows Invited + pending invitation; Mailpit (`http://localhost:8025`) shows "Set up Verification Firm on LexForgeX".
   - Type notes → "Saved"; reload → notes persist.
   - On the seed firm "Sharma & Associates": Suspend with a reason → status Suspended + reason; History lists it; Reactivate.
   - Audit log lists all of the above.
   - Repeat the Firms list at 375 px width (table scrolls horizontally inside its card; page does not).
   - Screenshot login, firms list and firm detail.
 
-- [ ] **Step 11: Checkpoint** — suggested message: `feat(web): LegalForgeX platform console`.
+- [ ] **Step 11: Checkpoint** — suggested message: `feat(web): LexForgeX platform console`.
 
 ---
 
@@ -2230,7 +2230,7 @@ export function SuspendedBanner() {
   if (data?.organization.status !== 'suspended') return null;
   return (
     <div role="status" className="border-b border-warning-200 bg-warning-50 px-4 py-2 text-center text-sm text-warning-900">
-      This account is suspended. You can view and export your records, but changes can’t be saved. Contact LegalForgeX to reactivate.
+      This account is suspended. You can view and export your records, but changes can’t be saved. Contact LexForgeX to reactivate.
     </div>
   );
 }
@@ -2258,7 +2258,7 @@ In `AppShell.tsx`, render `<SuspendedBanner />` as the first child inside the ma
 ```markdown
 ## D-014 · Platform realm and firm suspension (2026-10-17)
 
-- LegalForgeX team members are `platform_admins`, a realm separate from firm users: own table, session table, cookie (`lf_psid`, path `/api/v1/platform`, SameSite=Strict), CSRF secret and router mounted before the firm router. Password + TOTP (RFC 6238, replay-guarded) on every sign-in; 30-minute idle and 12-hour absolute session limits. Admins are created or reset only by `pnpm --filter @legalops/api platform:create-admin`.
+- LexForgeX team members are `platform_admins`, a realm separate from firm users: own table, session table, cookie (`lf_psid`, path `/api/v1/platform`, SameSite=Strict), CSRF secret and router mounted before the firm router. Password + TOTP (RFC 6238, replay-guarded) on every sign-in; 30-minute idle and 12-hour absolute session limits. Admins are created or reset only by `pnpm --filter @legalops/api platform:create-admin`.
 - Firms are created by a platform invite (`status = 'invited'`) and become `active` when the owner accepts. Payment is tracked manually in `platform_notes` (never exposed to firms; audit records only that notes changed).
 - Suspended firms are read-only: one middleware on the firm router (before every sub-router, so new routes are covered by construction) returns `FIRM_SUSPENDED` for writes except logout/switch-organization; the worker records due actions as skipped ("Firm suspended") and never resends them. The web app hides non-read controls via `useCan` and shows a banner.
 - TOTP enrolment shows the key and an `otpauth://` link; no QR image (deferred).

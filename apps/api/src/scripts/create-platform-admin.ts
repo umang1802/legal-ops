@@ -1,7 +1,7 @@
 /**
- * Creates a LegalForgeX platform admin, or resets one (--reset: new password, TOTP cleared, sessions revoked).
+ * Creates a LexForgeX platform admin, or resets one (--reset: new password, TOTP cleared, sessions revoked).
  * Prints the one-time password once. Usage:
- *   pnpm --filter @legalops/api platform:create-admin -- --email ops@legalforgex.com --name "Ops" [--reset]
+ *   pnpm --filter @legalops/api platform:create-admin -- --email ops@lexforgex.com --name "Ops" [--reset]
  */
 import { parseArgs } from 'node:util';
 import { emailSchema } from '@legalops/validation';

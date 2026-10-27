@@ -27,7 +27,7 @@ export function FirmsPage() {
     <>
       <PageHeader
         title="Firms"
-        description="Every firm on LegalForgeX."
+        description="Every firm on LexForgeX."
         actions={<Button onClick={() => setInviting(true)}>Invite firm</Button>}
       />
       <div className="mb-4 flex flex-wrap gap-2">

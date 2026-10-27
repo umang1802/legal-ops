@@ -12,7 +12,7 @@ export type AuthContext = TenantContext & { sessionId: string; csrfSecret: strin
 
 export type RequestMeta = { requestId: string; ip: string | null; userAgent: string | null };
 
-/** A platform (LegalForgeX team) session. Never carries a firm; never authorises firm endpoints. */
+/** A platform (LexForgeX team) session. Never carries a firm; never authorises firm endpoints. */
 export type PlatformAuth = { sessionId: string; adminId: string; csrfSecret: string; mfaVerified: boolean };
 
 declare global {
