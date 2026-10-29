@@ -11,7 +11,7 @@ import { Router } from 'express';
 import type { Deps } from '../../deps.js';
 import { parse } from '../../http/validate.js';
 import { requestMeta } from '../../middleware/request-context.js';
-import { requireAuth, requirePermission, tenant } from '../../middleware/security.js';
+import { requireAuth, requireFeature, requirePermission, tenant } from '../../middleware/security.js';
 import * as hearings from './hearings.service.js';
 
 export function hearingsRouter(deps: Deps): Router {
@@ -29,7 +29,7 @@ export function hearingsRouter(deps: Deps): Router {
   });
 
   // Before '/:hearingId', so 'diary' isn't read as a hearing id.
-  r.get('/diary', requirePermission('matters.view'), async (req, res) => {
+  r.get('/diary', requireFeature('diary'), requirePermission('matters.view'), async (req, res) => {
     res.json({ data: await hearings.getDiary(deps, tenant(req), parse(diarySchema, req.query)) });
   });
 

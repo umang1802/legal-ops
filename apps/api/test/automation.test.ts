@@ -1,9 +1,13 @@
+import type { FeatureKey } from '@legalops/types';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import type { Deps } from '../src/deps.js';
 import { ProviderError, type EmailMessage, type EmailProvider } from '../src/modules/notifications/providers.js';
+import { setFirmFeature } from '../src/modules/features/features.service.js';
+import { setFirmFeatureAsAdmin } from '../src/modules/platform/platform-firms.service.js';
 import { tick } from '../src/modules/workflows/processor.js';
 import { addDays, buildApp, deps as baseDeps, loginAs, pool, practiceFixture, type Session, useDatabase } from './helpers.js';
+import { createPlatformAdmin } from './platform-helpers.js';
 
 useDatabase();
 const app = buildApp();
@@ -481,5 +485,125 @@ describe('automations: settings API', () => {
     const res = await post(owner, '/dev/worker/tick', { asOf: new Date().toISOString() });
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveProperty('events');
+  });
+});
+
+describe('automations: per-firm features', () => {
+  const skippedFor = async (reason: string) =>
+    (await pool.query(`SELECT count(*)::int AS n FROM scheduled_actions WHERE status = 'skipped' AND result->>'reason' = $1`, [reason])).rows[0].n as number;
+  const switchFeature = async (orgId: string, key: FeatureKey, enabled: boolean) => {
+    const admin = (await pool.query(`SELECT id FROM platform_admins LIMIT 1`)).rows[0]?.id ?? (await createPlatformAdmin(`ops-${Date.now()}@lfx.test`)).id;
+    await setFirmFeature(pool, orgId, key, enabled, admin);
+  };
+  const customRule = (owner: Session, body: Record<string, unknown>) =>
+    post(owner, '/workflows', {
+      name: 'Firm rule',
+      triggerConfig: { timing: 'immediate' },
+      actions: [{ type: 'notify', channel: 'email', recipient: 'client', templateKey: 'hearing_today_client' }],
+      ...body,
+    });
+
+  it('Billing off: invoice reminders that fall due are skipped, and not sent later', async () => {
+    const s = await setup();
+    const fin = await loginAs(app, 'finance@a.test');
+    const dueDate = addDays(s.today, 10);
+    expect((await post(fin, '/invoices', { matterId: s.main.matterId, dueDate, items: [{ description: 'Fees', unitPrice: '50000' }], issue: true })).status).toBe(201);
+    await s.run(new Date());
+    const sentOnIssue = s.email.to('raj@client.test').length;
+
+    await switchFeature(s.firm.orgId, 'billing', false);
+    await s.run(ist(dueDate, '10:05'));
+    expect(s.email.to('raj@client.test')).toHaveLength(sentOnIssue);
+    expect(await skippedFor('feature_off:billing')).toBeGreaterThan(0);
+
+    await switchFeature(s.firm.orgId, 'billing', true);
+    await s.run(ist(dueDate, '10:10'));
+    expect(s.email.to('raj@client.test')).toHaveLength(sentOnIssue);
+  });
+
+  it('Automations off: the firm’s own rules pause, built-in reminders still go out', async () => {
+    const s = await setup();
+    expect((await customRule(s.owner, { triggerType: 'HEARING_SCHEDULED' })).status).toBe(201);
+    await switchFeature(s.firm.orgId, 'automations', false);
+    const date = addDays(s.today, 5);
+    await post(s.owner, '/hearings', { caseId: s.main.caseId, scheduledDate: date, startTime: '10:30' });
+    await s.run(new Date());
+    expect(await skippedFor('feature_off:automations')).toBe(1);
+    expect(s.email.to('raj@client.test')).toHaveLength(0);
+    await s.run(ist(addDays(date, -1), '09:01'));
+    expect(s.email.to('raj@client.test')).toHaveLength(1); // built-in day-before reminder
+  });
+
+  it('a firm rule on an invoice event is skipped while Billing is off, even with Automations on', async () => {
+    const s = await setup();
+    expect((await customRule(s.owner, { triggerType: 'INVOICE_CREATED' })).status).toBe(201);
+    const fin = await loginAs(app, 'finance@a.test');
+    // Issue while Billing is on (the route needs it), then switch it off before the worker runs.
+    expect((await post(fin, '/invoices', { matterId: s.main.matterId, items: [{ description: 'Fees', unitPrice: '100' }], issue: true })).status).toBe(201);
+    await switchFeature(s.firm.orgId, 'billing', false);
+    await s.run(new Date());
+    expect(await skippedFor('feature_off:billing')).toBeGreaterThanOrEqual(2); // the firm's rule and the built-in invoice email
+    expect(s.email.to('raj@client.test')).toHaveLength(0);
+  });
+
+  it('Communication off: emails that need approval are skipped, not left waiting', async () => {
+    const s = await setup();
+    expect((await customRule(s.owner, { triggerType: 'HEARING_SCHEDULED', requiresApproval: true })).status).toBe(201);
+    await switchFeature(s.firm.orgId, 'communication', false);
+    await post(s.owner, '/hearings', { caseId: s.main.caseId, scheduledDate: addDays(s.today, 5) });
+    await s.run(new Date());
+    expect(await skippedFor('feature_off:communication')).toBe(1);
+    const waiting = await pool.query(`SELECT count(*)::int AS n FROM notifications WHERE status = 'awaiting_approval'`);
+    expect(waiting.rows[0].n).toBe(0);
+  });
+});
+
+describe('automations: held emails when a feature is switched off', () => {
+  const switchOff = async (orgId: string, key: FeatureKey) => {
+    const admin = await createPlatformAdmin(`ops-${key}@lfx.test`);
+    await setFirmFeatureAsAdmin(baseDeps, { sessionId: 's', adminId: admin.id, csrfSecret: 'c', mfaVerified: true }, orgId, key, false, { requestId: 'r', ip: null, userAgent: null });
+  };
+  const held = async () => (await pool.query(`SELECT status, skip_reason FROM notifications WHERE recipient_type = 'client' ORDER BY created_at`)).rows;
+
+  it('Communication off: emails already waiting for approval are marked not sent, and stay that way', async () => {
+    const s = await setup();
+    await post(s.owner, '/workflows', {
+      name: 'Firm rule',
+      triggerType: 'HEARING_SCHEDULED',
+      triggerConfig: { timing: 'immediate' },
+      requiresApproval: true,
+      actions: [{ type: 'notify', channel: 'email', recipient: 'client', templateKey: 'hearing_today_client' }],
+    });
+    await post(s.owner, '/hearings', { caseId: s.main.caseId, scheduledDate: addDays(s.today, 5) });
+    await s.run(new Date());
+    expect(await held()).toEqual([{ status: 'awaiting_approval', skip_reason: null }]);
+
+    await switchOff(s.firm.orgId, 'communication');
+    expect(await held()).toEqual([{ status: 'skipped', skip_reason: 'feature_off:communication' }]);
+    await s.run(new Date());
+    expect(s.email.to('raj@client.test')).toHaveLength(0);
+  });
+
+  it('Billing off: invoice emails waiting for approval are marked not sent; others keep waiting', async () => {
+    const s = await setup();
+    const wf = (await s.owner.agent.get('/api/v1/workflows')).body.data as { id: string; systemKey: string }[];
+    for (const key of ['invoice_issued', 'hearing_outcome_client']) {
+      const w = wf.find((x) => x.systemKey === key)!;
+      await pool.query(`UPDATE workflows SET requires_approval = true WHERE id = $1`, [w.id]);
+    }
+    const fin = await loginAs(app, 'finance@a.test');
+    await post(fin, '/invoices', { matterId: s.main.matterId, items: [{ description: 'Fees', unitPrice: '100' }], issue: true });
+    const h = await post(s.owner, '/hearings', { caseId: s.main.caseId, scheduledDate: s.today });
+    await post(s.owner, `/hearings/${h.body.data.id}/complete`, { result: 'adjourned', outcome: 'Adjourned', clientSummary: 'Next date given.', nextHearingDate: addDays(s.today, 14) });
+    await s.run(new Date());
+    const before = (await pool.query(`SELECT notification_type FROM notifications WHERE status = 'awaiting_approval' ORDER BY notification_type`)).rows;
+    expect(before.length).toBe(2);
+
+    await switchOff(s.firm.orgId, 'billing');
+    const after = (await pool.query(`SELECT n.status, n.skip_reason, w.system_key FROM notifications n JOIN workflows w ON w.id = n.workflow_id WHERE n.recipient_type = 'client' ORDER BY w.system_key`)).rows;
+    expect(after).toEqual([
+      { status: 'awaiting_approval', skip_reason: null, system_key: 'hearing_outcome_client' },
+      { status: 'skipped', skip_reason: 'feature_off:billing', system_key: 'invoice_issued' },
+    ]);
   });
 });

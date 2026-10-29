@@ -1,4 +1,4 @@
-import type { Role } from '@legalops/types';
+import { FEATURE_KEYS, type Role } from '@legalops/types';
 import { describe, expect, it } from 'vitest';
 import { query } from '../src/db/pool.js';
 import { sql } from '../src/db/sql.js';
@@ -46,7 +46,7 @@ describe('matter visibility', () => {
   }
 
   async function visibleTitles(orgId: string, userId: string, role: Role) {
-    const ctx = { organizationId: orgId, userId, role };
+    const ctx = { organizationId: orgId, userId, role, features: FEATURE_KEYS };
     const rows = await query<{ title: string }>(
       pool,
       sql`SELECT m.title FROM matters m
@@ -90,6 +90,7 @@ describe('matter visibility', () => {
       organizationId: firm.orgId,
       userId: firm.users['l2@a.test']!.userId,
       role: 'lawyer' as const,
+      features: FEATURE_KEYS,
     };
     await expect(assertMatterVisible(pool, l2, matters.shared)).resolves.toBeUndefined();
     await expect(assertMatterVisible(pool, l2, matters.onlyL1)).rejects.toMatchObject({ status: 404 });
@@ -98,6 +99,7 @@ describe('matter visibility', () => {
       organizationId: other.orgId,
       userId: other.users['lawyer@b.test']!.userId,
       role: 'owner' as const,
+      features: FEATURE_KEYS,
     };
     await expect(assertMatterVisible(pool, outsider, matters.shared)).rejects.toMatchObject({ status: 404 });
   });

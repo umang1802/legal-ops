@@ -1,3 +1,4 @@
+import type { FeatureKey } from './features.js';
 import type { Permission } from './permissions.js';
 
 export type OrganizationStatus = 'invited' | 'active' | 'suspended';
@@ -62,3 +63,15 @@ export type PlatformInviteLink = { url: string; email: string; role: string; exp
 export function allowedWhileSuspended(permission: Permission): boolean {
   return permission.endsWith('.view') || permission === 'finance.dashboard';
 }
+
+/** One feature switch on a firm, as the platform console shows it. */
+export type PlatformFirmFeature = {
+  key: FeatureKey;
+  label: string;
+  description: string;
+  enabled: boolean;
+  /** True when no one has set this switch, so the feature's default applies. */
+  isDefault: boolean;
+  setBy: string | null;
+  setAt: string | null;
+};

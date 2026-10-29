@@ -17,7 +17,7 @@ import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { api, ApiError, applyFieldErrors } from '../../lib/api.js';
-import { ME_KEY } from '../../lib/auth.js';
+import { hasFeature, ME_KEY, useSession } from '../../lib/auth.js';
 
 // Form works on strings; empty string = "clear this field" (sent as null).
 const formSchema = z.object({
@@ -84,6 +84,7 @@ function toPayload(v: FormValues) {
 
 export function FirmSettingsPage() {
   const qc = useQueryClient();
+  const me = useSession();
   const org = useQuery({
     queryKey: ['organization'],
     queryFn: () => api.get<OrganizationDto>('/organization'),
@@ -158,7 +159,8 @@ export function FirmSettingsPage() {
         </CardBody>
       </Card>
 
-      <Card>
+      {/* Hidden (but still submitted unchanged) when the firm doesn't have Billing. */}
+      <Card className={hasFeature(me, 'billing') ? undefined : 'hidden'}>
         <CardHeader
           title="Billing & tax"
           description="How invoices calculate tax. Existing invoices keep the mode they were issued with."
@@ -222,7 +224,8 @@ export function FirmSettingsPage() {
               </span>
             </span>
           </label>
-          <label className="flex items-start gap-3 text-sm sm:col-span-2">
+          {/* Hidden (but still submitted unchanged) when the firm doesn't have Calendar sync. */}
+          <label className={`flex items-start gap-3 text-sm sm:col-span-2 ${hasFeature(me, 'calendar_sync') ? '' : 'hidden'}`}>
             <input type="checkbox" className="mt-0.5 size-4" {...form.register('calendarHideParties')} />
             <span>
               <span className="font-medium">Hide parties in synced calendars</span>

@@ -1,7 +1,7 @@
 import { lazy } from 'react';
 import { createBrowserRouter, RouterProvider } from 'react-router';
 import { AppShell } from './components/layout/AppShell.js';
-import { RedirectIfAuthed, RequireAuth, RequirePermission } from './components/layout/guards.js';
+import { RedirectIfAuthed, RequireAuth, RequireFeature, RequirePermission } from './components/layout/guards.js';
 import { AcceptInvitePage } from './features/auth/AcceptInvitePage.js';
 import { ForgotPasswordPage } from './features/auth/ForgotPasswordPage.js';
 import { LoginPage } from './features/auth/LoginPage.js';
@@ -107,7 +107,9 @@ const router = createBrowserRouter([
         path: '/diary',
         element: (
           <RequirePermission permission="matters.view">
-            <DiaryPrintPage />
+            <RequireFeature feature="diary">
+              <DiaryPrintPage />
+            </RequireFeature>
           </RequirePermission>
         ),
       },
@@ -116,7 +118,9 @@ const router = createBrowserRouter([
         path: '/matters/:matterId/history',
         element: (
           <RequirePermission permission="matters.view">
-            <MatterHistoryPrintPage />
+            <RequireFeature feature="diary">
+              <MatterHistoryPrintPage />
+            </RequireFeature>
           </RequirePermission>
         ),
       },
@@ -194,12 +198,21 @@ const router = createBrowserRouter([
             ),
           },
           { path: '/settings/members', element: <MembersPage /> },
-          { path: '/settings/calendar', element: <CalendarSyncPage /> },
+          {
+            path: '/settings/calendar',
+            element: (
+              <RequireFeature feature="calendar_sync">
+                <CalendarSyncPage />
+              </RequireFeature>
+            ),
+          },
           {
             path: '/communication',
             element: (
               <RequirePermission permission="matters.view">
-                <CommunicationPage />
+                <RequireFeature feature="communication">
+                  <CommunicationPage />
+                </RequireFeature>
               </RequirePermission>
             ),
           },

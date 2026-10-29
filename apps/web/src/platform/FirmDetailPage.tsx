@@ -1,4 +1,4 @@
-import type { PlatformFirmDetail } from '@legalops/types';
+import { featureLabel, type PlatformFirmDetail } from '@legalops/types';
 import {
   Alert,
   Badge,
@@ -18,6 +18,7 @@ import { Link, useParams } from 'react-router';
 import { ApiError } from '../lib/api.js';
 import { platformApi } from './api.js';
 import { STATUS } from './FirmsPage.js';
+import { FirmFeaturesCard } from './FirmFeaturesCard.js';
 import { PendingInvitesCard } from './PendingInvitesCard.js';
 
 const when = (s: string | null) =>
@@ -131,6 +132,7 @@ export function FirmDetailPage() {
               />
             </CardBody>
           </Card>
+          <FirmFeaturesCard firmId={f.id} />
           <PendingInvitesCard firmId={f.id} suspended={f.status === 'suspended'} />
           <Card>
             <CardHeader title="History" />
@@ -141,6 +143,7 @@ export function FirmDetailPage() {
                     <span>
                       <span className="font-medium">{h.action.replace('firm.', '').replace(/_/g, ' ')}</span>
                       {typeof h.details.reason === 'string' ? ` — ${h.details.reason}` : ''}
+                      {typeof h.details.feature === 'string' ? ` — ${featureLabel(h.details.feature)}` : ''}
                     </span>
                     <span className="text-muted">
                       {h.adminName} · {when(h.createdAt)}

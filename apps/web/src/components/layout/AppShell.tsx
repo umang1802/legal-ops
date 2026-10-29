@@ -6,7 +6,7 @@ import { NavLink, Outlet, ScrollRestoration, useNavigate } from 'react-router';
 import { canAct, useLogout, useSession } from '../../lib/auth.js';
 import { initials } from '../../lib/format.js';
 import { OrgSwitcher } from './OrgSwitcher.js';
-import { SETTINGS_NAV, SIDEBAR, type NavItem } from './nav.js';
+import { navVisible, SETTINGS_NAV, SIDEBAR, type NavItem } from './nav.js';
 import { SuspendedBanner } from './SuspendedBanner.js';
 
 function SidebarLink({ item }: { item: NavItem }) {
@@ -61,7 +61,7 @@ export function AppShell() {
   const logout = useLogout();
   const navigate = useNavigate();
   const [quickAddOpen, setQuickAddOpen] = useState(false);
-  const visible = (items: NavItem[]) => items.filter((i) => !i.permission || canAct(me, i.permission));
+  const visible = (items: NavItem[]) => items.filter((i) => navVisible(me, i));
   const canBilling = canAct(me, 'billing.view');
   // Hidden when nothing could be added (read-only users, suspended firms) rather than opening an empty sheet.
   const canQuickAdd = QUICK_ADD.some((i) => canAct(me, i.permission));

@@ -6,6 +6,7 @@ import type { RequestMeta, TenantContext } from '../../http/context.js';
 import { orgToday } from '../../http/dates.js';
 import { recordAudit } from '../audit/audit.service.js';
 import { hashToken, randomToken } from '../auth/crypto.js';
+import { loadEnabledFeatures } from '../features/features.service.js';
 import { queryHearings } from '../hearings/hearings.service.js';
 import { buildCalendar, type IcsEvent } from './ics.js';
 
@@ -73,9 +74,15 @@ export async function renderFeed(deps: Deps, token: string, now = new Date()): P
         WHERE f.token_hash = ${hashToken(deps.env.SESSION_SECRET, token)} AND f.revoked_at IS NULL`,
   );
   if (!feed || !isRole(feed.role)) return null;
+  const ctx: TenantContext = {
+    organizationId: feed.organization_id,
+    userId: feed.user_id,
+    role: feed.role,
+    features: await loadEnabledFeatures(deps.pool, feed.organization_id),
+  };
+  // Calendar sync switched off for the firm: links answer like an unknown token, and work again once it's on.
+  if (!ctx.features.includes('calendar_sync')) return null;
   if (feed.stale) await query(deps.pool, sql`UPDATE calendar_feeds SET last_accessed_at = now() WHERE id = ${feed.id}`);
-
-  const ctx: TenantContext = { organizationId: feed.organization_id, userId: feed.user_id, role: feed.role };
   const today = await orgToday(deps.pool, ctx.organizationId);
   const hearings = await queryHearings(
     deps.pool,

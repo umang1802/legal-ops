@@ -7,7 +7,7 @@ import type { Deps } from './deps.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { requestId } from './middleware/request-context.js';
 import { blockWritesWhenSuspended } from './middleware/suspension.js';
-import { csrfProtection, requireJson } from './middleware/security.js';
+import { csrfProtection, requireFeature, requireJson } from './middleware/security.js';
 import { authRouter, sessionLoader, type RateLimits } from './modules/auth/auth.routes.js';
 import {
   billingRouter,
@@ -87,17 +87,17 @@ export function createApp(deps: Deps, opts: { rateLimits?: Partial<RateLimits> }
   api.use('/hearings', hearingsRouter(deps));
   api.use('/tasks', tasksRouter(deps));
   api.use('/dashboard', dashboardRouter(deps));
-  api.use('/invoices', invoicesRouter(deps));
-  api.use('/payments', paymentsRouter(deps));
-  api.use('/expenses', expensesRouter(deps));
-  api.use('/fee-agreements', feeAgreementsRouter(deps));
-  api.use('/fee-milestones', feeMilestonesRouter(deps));
-  api.use('/billing', billingRouter(deps));
-  api.use('/notifications', notificationsRouter(deps));
-  api.use('/email-templates', templatesRouter(deps));
-  api.use('/workflows', workflowsRouter(deps));
-  api.use('/calendar-feed', calendarFeedRouter(deps));
-  api.use('/documents', documentsRouter(deps));
+  api.use('/invoices', requireFeature('billing'), invoicesRouter(deps));
+  api.use('/payments', requireFeature('billing'), paymentsRouter(deps));
+  api.use('/expenses', requireFeature('billing'), expensesRouter(deps));
+  api.use('/fee-agreements', requireFeature('billing'), feeAgreementsRouter(deps));
+  api.use('/fee-milestones', requireFeature('billing'), feeMilestonesRouter(deps));
+  api.use('/billing', requireFeature('billing'), billingRouter(deps));
+  api.use('/notifications', requireFeature('communication'), notificationsRouter(deps));
+  api.use('/email-templates', requireFeature('automations'), templatesRouter(deps));
+  api.use('/workflows', requireFeature('automations'), workflowsRouter(deps));
+  api.use('/calendar-feed', requireFeature('calendar_sync'), calendarFeedRouter(deps));
+  api.use('/documents', requireFeature('documents'), documentsRouter(deps));
   api.use('/ical', icalRouter(deps));
   if (deps.env.NODE_ENV !== 'production') api.use('/dev', devRouter(deps));
   // Platform realm (LexForgeX team): own cookie, session, CSRF and MFA; never runs firm middleware.

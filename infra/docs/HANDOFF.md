@@ -87,7 +87,8 @@ AWS resources were created through the console, using the runbook names. Status 
    **Stage 9, email**: blocked on section 4 below (bounce and complaint handling, alarms, email footer) and SES production access. Keep `EMAIL_PROVIDER=disabled`.
 4. **Cleanup:** delete the unused `lexforgex-db-sg`; confirm no RDS snapshots remain; consider a billing alert at $60 if not already set.
 5. **Matter documents (S3), new 29 Oct 2026.** Vidhimeya's bulk document upload needs a private S3 bucket: runbook **Stage 10** (bucket with CORS, a lifecycle rule and an HTTPS-only policy; IAM policy update; SSM `S3_BUCKET`; IMDS hop limit 2 so the API container can use the instance role; redeploy). Billable but small (about $0.025 per GB a month). Until it's done the app runs with uploads switched off. Code is on branch `feature/documents`.
-6. **Housekeeping noticed during the rollout:** the GoDaddy bare-domain forward still goes to `http://` (should be `https://`); product name in the platform UI still says "LexForgeX" (Track 7).
+6. **Per-firm features (branch `feature/firm-features`).** The next deploy runs migration `0014_organization_features`. Nothing changes for existing firms: every current feature stays on until someone switches it off on the firm's page in the platform console (Features card). No new AWS resources or SSM parameters.
+7. **Housekeeping noticed during the rollout:** the GoDaddy bare-domain forward still goes to `http://` (should be `https://`); product name in the platform UI still says "LexForgeX" (Track 7).
 
 ---
 

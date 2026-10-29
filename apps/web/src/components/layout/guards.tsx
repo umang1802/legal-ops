@@ -1,8 +1,9 @@
-import type { Permission } from '@legalops/types';
+import { can, type FeatureKey, type Permission, PERMISSION_FEATURE } from '@legalops/types';
 import { Button, Spinner } from '@legalops/ui';
 import { Suspense, type ReactNode } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router';
-import { useCan, useMe } from '../../lib/auth.js';
+import { hasFeature, useCan, useMe, useSession } from '../../lib/auth.js';
+import { NotFound } from '../../features/common/NotFound.js';
 import { PermissionDenied } from '../../features/common/PermissionDenied.js';
 
 function FullPageSpinner() {
@@ -46,5 +47,16 @@ export function RedirectIfAuthed() {
 }
 
 export function RequirePermission({ permission, children }: { permission: Permission; children: ReactNode }) {
-  return useCan(permission) ? <>{children}</> : <PermissionDenied />;
+  const me = useSession();
+  const allowed = useCan(permission);
+  if (allowed) return <>{children}</>;
+  // The role has it but the firm's feature is off: the page doesn't exist for this firm.
+  const feature = PERMISSION_FEATURE[permission];
+  if (feature && can(me.role, permission) && !hasFeature(me, feature)) return <NotFound />;
+  return <PermissionDenied />;
+}
+
+/** Pages of a switchable feature: Not Found when it's off for the firm. */
+export function RequireFeature({ feature, children }: { feature: FeatureKey; children: ReactNode }) {
+  return hasFeature(useSession(), feature) ? <>{children}</> : <NotFound />;
 }

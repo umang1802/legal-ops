@@ -4,6 +4,7 @@ import { sql } from '../../db/sql.js';
 import type { TenantContext } from '../../http/context.js';
 import { iso, pageClause, type Page } from '../../http/query-helpers.js';
 import { assertMatterVisible } from '../access/matter-scope.js';
+import { activityVisible } from '../features/features.service.js';
 
 export type TimelineEntry = {
   organizationId: string;
@@ -59,6 +60,7 @@ export async function listMatterTimeline(
                t.actor_type, t.case_id, t.created_at, count(*) OVER ()::int AS total
         FROM timeline_events t LEFT JOIN users u ON u.id = t.actor_user_id
         WHERE t.organization_id = ${ctx.organizationId} AND t.matter_id = ${matterId}
+          AND ${activityVisible(ctx.features, 't.event_type')}
         ORDER BY t.created_at DESC, t.id DESC
         ${pageClause(page)}`,
   );

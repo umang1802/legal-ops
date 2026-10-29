@@ -1,4 +1,4 @@
-import type { PlatformAuditEntry } from '@legalops/types';
+import { featureLabel, type PlatformAuditEntry } from '@legalops/types';
 import { EmptyState, PageHeader, SkeletonList } from '@legalops/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
@@ -22,6 +22,7 @@ export function AuditLogPage() {
             <li key={a.id} className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-3">
               <span>
                 <span className="font-medium">{a.action}</span>
+                {typeof a.details.feature === 'string' ? ` (${featureLabel(a.details.feature)})` : null}
                 {a.organizationId ? (
                   <>
                     {' '}

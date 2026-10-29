@@ -1,11 +1,13 @@
-import { can, seesAllMatters, type DashboardDto } from '@legalops/types';
+import { seesAllMatters, type DashboardDto } from '@legalops/types';
 import { query, queryOne } from '../../db/pool.js';
 import { sql } from '../../db/sql.js';
 import type { Deps } from '../../deps.js';
 import type { TenantContext } from '../../http/context.js';
 import { orgToday } from '../../http/dates.js';
 import { iso } from '../../http/query-helpers.js';
+import { allowed } from '../../middleware/security.js';
 import { matterVisible } from '../access/matter-scope.js';
+import { activityVisible } from '../features/features.service.js';
 import { receivableTotals } from '../billing/summary.service.js';
 import { queryHearings } from '../hearings/hearings.service.js';
 import { queryTasks } from '../tasks/tasks.service.js';
@@ -90,12 +92,13 @@ export async function getDashboard(deps: Deps, ctx: TenantContext): Promise<Dash
         JOIN matters m ON m.id = e.matter_id
         LEFT JOIN users u ON u.id = e.actor_user_id
         WHERE e.organization_id = ${ctx.organizationId} AND ${matterVisible(ctx, sql.raw('e.matter_id'))}
+          AND ${activityVisible(ctx.features, 'e.event_type')}
         ORDER BY e.created_at DESC
         LIMIT ${LIST_LIMIT}`,
   );
 
   // Money only for roles with the firm financial dashboard (owner/admin/finance); lawyers keep "—".
-  const money = can(ctx.role, 'finance.dashboard') ? await receivableTotals(db, ctx) : null;
+  const money = allowed(ctx, 'finance.dashboard') ? await receivableTotals(db, ctx) : null;
 
   return {
     today,

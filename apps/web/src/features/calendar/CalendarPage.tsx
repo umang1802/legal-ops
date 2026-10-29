@@ -5,7 +5,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, Plus, Printer } from 'lucide-r
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { api, qs } from '../../lib/api.js';
-import { canAct, useSession } from '../../lib/auth.js';
+import { canAct, hasFeature, useSession } from '../../lib/auth.js';
 import { addDays, formatTime, fullName, relativeDay, todayIn } from '../../lib/format.js';
 import { useMembers } from '../../lib/hooks.js';
 import { HearingFormSheet } from '../hearings/HearingFormSheet.js';
@@ -81,11 +81,13 @@ export function CalendarPage() {
         <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Calendar</h1>
         <div className="flex flex-wrap gap-2">
           {/* Reading, not editing: available to everyone who can see the calendar, including suspended firms. */}
-          <Link to="/diary" target="_blank">
-            <Button variant="secondary" icon={<Printer className="size-4" />}>
-              Print diary
-            </Button>
-          </Link>
+          {hasFeature(me, 'diary') ? (
+            <Link to="/diary" target="_blank">
+              <Button variant="secondary" icon={<Printer className="size-4" />}>
+                Print diary
+              </Button>
+            </Link>
+          ) : null}
           {canAct(me, 'hearings.manage') ? (
             <Button icon={<Plus className="size-4" />} onClick={() => setScheduling(true)}>
               Schedule hearing

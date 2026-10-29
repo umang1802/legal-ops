@@ -1,10 +1,11 @@
-import { isRole, permissionsFor, type MeResponse, type OrganizationStatus, type Role } from '@legalops/types';
+import { canWithFeatures, isRole, permissionsFor, type MeResponse, type OrganizationStatus, type Role } from '@legalops/types';
 import { query, queryOne, withTransaction, type Db } from '../../db/pool.js';
 import { sql } from '../../db/sql.js';
 import type { Deps } from '../../deps.js';
 import type { AuthContext, RequestMeta } from '../../http/context.js';
 import { AppError, forbidden, unauthenticated } from '../../http/errors.js';
 import { recordAudit } from '../audit/audit.service.js';
+import { loadEnabledFeatures } from '../features/features.service.js';
 import { emitEvent } from '../outbox/outbox.service.js';
 import { hashPassword, hashToken, randomToken, verifyPassword } from './crypto.js';
 
@@ -62,6 +63,7 @@ export async function loadSession(deps: Deps, token: string): Promise<AuthContex
     userId: row.user_id,
     organizationId: row.organization_id,
     role: row.role,
+    features: await loadEnabledFeatures(deps.pool, row.organization_id),
     csrfSecret: row.csrf_secret,
     orgStatus: row.org_status,
   };
@@ -97,6 +99,7 @@ export async function getMe(deps: Deps, db: Db, sessionId: string): Promise<MeRe
         WHERE s.id = ${sessionId}`,
   );
   if (!row) throw unauthenticated();
+  const features = await loadEnabledFeatures(db, row.org_id);
   const memberships = await query<{ organization_id: string; name: string; role: Role }>(
     db,
     sql`SELECT m.organization_id, o.name, m.role
@@ -121,7 +124,8 @@ export async function getMe(deps: Deps, db: Db, sessionId: string): Promise<MeRe
       status: row.org_status,
     },
     role: row.role,
-    permissions: permissionsFor(row.role),
+    permissions: permissionsFor(row.role).filter((p) => canWithFeatures(row.role, features, p)),
+    features,
     memberships: memberships.map((m) => ({
       organizationId: m.organization_id,
       organizationName: m.name,

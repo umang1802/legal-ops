@@ -169,7 +169,7 @@ export function HearingDetailPage() {
               />
             )}
           </Card>
-          <HearingDocumentsCard hearing={h} />
+          {canAct(me, 'documents.view') ? <HearingDocumentsCard hearing={h} /> : null}
         </div>
         <Card className="h-fit">
           <CardHeader title="Details" />
