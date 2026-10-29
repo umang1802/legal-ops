@@ -160,6 +160,7 @@ export type HearingDto = {
   id: string;
   caseId: string;
   caseNumber: string | null;
+  cnr: string | null;
   caseTitle: string;
   matterId: string;
   matterTitle: string;
@@ -402,3 +403,10 @@ export type MatterBillingDto = {
 };
 
 export type ClientBalanceDto = { outstanding: Money; overdue: Money; advance: Money };
+
+/** One line of the printable daily diary: the hearing plus what happened at the case's last held hearing. */
+export type DiaryRowDto = HearingDto & {
+  previous: { date: string; result: 'completed' | 'adjourned'; outcome: string | null } | null;
+};
+
+export type DiaryDto = { date: string; rows: DiaryRowDto[] };

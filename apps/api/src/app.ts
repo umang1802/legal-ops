@@ -17,6 +17,7 @@ import {
   invoicesRouter,
   paymentsRouter,
 } from './modules/billing/billing.routes.js';
+import { calendarFeedRouter, icalRouter } from './modules/calendar/calendar-feed.routes.js';
 import { casesRouter } from './modules/cases/cases.routes.js';
 import { clientsRouter } from './modules/clients/clients.routes.js';
 import { courtsRouter } from './modules/courts/courts.routes.js';
@@ -94,6 +95,8 @@ export function createApp(deps: Deps, opts: { rateLimits?: Partial<RateLimits> }
   api.use('/notifications', notificationsRouter(deps));
   api.use('/email-templates', templatesRouter(deps));
   api.use('/workflows', workflowsRouter(deps));
+  api.use('/calendar-feed', calendarFeedRouter(deps));
+  api.use('/ical', icalRouter(deps));
   if (deps.env.NODE_ENV !== 'production') api.use('/dev', devRouter(deps));
   // Platform realm (LexForgeX team): own cookie, session, CSRF and MFA; never runs firm middleware.
   app.use('/api/v1/platform', platformRouter(deps, { ...DEFAULT_LIMITS, ...opts.rateLimits }));

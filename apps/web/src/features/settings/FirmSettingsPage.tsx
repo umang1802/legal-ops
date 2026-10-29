@@ -34,6 +34,7 @@ const formSchema = z.object({
   stateCode: z.string(),
   timezone: z.string().min(1),
   remindersEnabled: z.boolean(),
+  calendarHideParties: z.boolean(),
   invoicePrefix: z.string(),
   taxMode: z.enum(['simple', 'gst']),
   gstin: z.string(),
@@ -54,6 +55,7 @@ const toForm = (o: OrganizationDto): FormValues => ({
   stateCode: o.stateCode ?? '',
   timezone: o.timezone,
   remindersEnabled: o.remindersEnabled,
+  calendarHideParties: o.calendarHideParties,
   invoicePrefix: o.invoicePrefix,
   taxMode: o.taxMode,
   gstin: o.gstin ?? '',
@@ -217,6 +219,16 @@ export function FirmSettingsPage() {
                 Hearing and payment-due reminders to your team and clients. Turn this off to stop all of them at
                 once; reminders that fall due while it is off are skipped, not sent later. Other emails
                 (invitations, invoices, receipts, task assignments) are not affected.
+              </span>
+            </span>
+          </label>
+          <label className="flex items-start gap-3 text-sm sm:col-span-2">
+            <input type="checkbox" className="mt-0.5 size-4" {...form.register('calendarHideParties')} />
+            <span>
+              <span className="font-medium">Hide parties in synced calendars</span>
+              <span className="block text-muted">
+                Calendar sync copies hearings into each person’s Google, Outlook or Apple calendar. With this on, events show only
+                the case number and court, never parties, client or matter names.
               </span>
             </span>
           </label>

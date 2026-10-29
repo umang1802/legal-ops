@@ -22,6 +22,7 @@ type OrgRow = {
   timezone: string;
   currency: string;
   reminders_enabled: boolean;
+  calendar_hide_parties: boolean;
   invoice_prefix: string;
   tax_mode: 'simple' | 'gst';
   gstin: string | null;
@@ -42,6 +43,7 @@ const toOrgDto = (o: OrgRow): OrganizationDto => ({
   stateCode: o.state_code,
   timezone: o.timezone,
   remindersEnabled: o.reminders_enabled,
+  calendarHideParties: o.calendar_hide_parties,
   currency: o.currency,
   invoicePrefix: o.invoice_prefix,
   taxMode: o.tax_mode,
@@ -62,6 +64,7 @@ const ORG_COLUMNS: Record<keyof UpdateOrganizationInput, string> = {
   stateCode: 'state_code',
   timezone: 'timezone',
   remindersEnabled: 'reminders_enabled',
+  calendarHideParties: 'calendar_hide_parties',
   invoicePrefix: 'invoice_prefix',
   taxMode: 'tax_mode',
   gstin: 'gstin',
@@ -72,7 +75,7 @@ const ORG_COLUMNS: Record<keyof UpdateOrganizationInput, string> = {
 async function loadOrg(db: Db, organizationId: string, lock = false): Promise<OrgRow> {
   const row = await queryOne<OrgRow>(
     db,
-    sql`SELECT id, name, legal_name, email, phone, address, city, state, pincode, state_code, timezone, currency, reminders_enabled,
+    sql`SELECT id, name, legal_name, email, phone, address, city, state, pincode, state_code, timezone, currency, reminders_enabled, calendar_hide_parties,
                invoice_prefix, tax_mode, gstin, pan, default_send_time::text
         FROM organizations WHERE id = ${organizationId} ${lock ? sql`FOR UPDATE` : sql.empty}`,
   );

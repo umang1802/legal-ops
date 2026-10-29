@@ -2,6 +2,7 @@ import {
   cancelHearingSchema,
   completeHearingSchema,
   createHearingSchema,
+  diarySchema,
   listHearingsSchema,
   updateHearingSchema,
   uuidSchema,
@@ -25,6 +26,11 @@ export function hearingsRouter(deps: Deps): Router {
   r.post('/', requirePermission('hearings.manage'), async (req, res) => {
     const input = parse(createHearingSchema, req.body);
     res.status(201).json({ data: await hearings.createHearing(deps, tenant(req), input, requestMeta(req)) });
+  });
+
+  // Before '/:hearingId', so 'diary' isn't read as a hearing id.
+  r.get('/diary', requirePermission('matters.view'), async (req, res) => {
+    res.json({ data: await hearings.getDiary(deps, tenant(req), parse(diarySchema, req.query)) });
   });
 
   r.get('/:hearingId', requirePermission('matters.view'), async (req, res) => {

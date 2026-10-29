@@ -1,7 +1,8 @@
-import { HEARING_STATUS_LABELS, type HearingDto, type HearingStatus } from '@legalops/types';
+import { HEARING_STATUS_LABELS, type DiaryDto, type HearingDto, type HearingStatus } from '@legalops/types';
 import type {
   completeHearingSchema,
   createHearingSchema,
+  diarySchema,
   listHearingsSchema,
   updateHearingSchema,
 } from '@legalops/validation';
@@ -22,6 +23,7 @@ import { addTimelineEvent } from '../timeline/timeline.service.js';
 
 type HearingRow = {
   id: string;
+  cnr: string | null;
   case_id: string;
   case_number: string | null;
   case_title: string;
@@ -52,7 +54,7 @@ type HearingRow = {
 };
 
 const HEARING_SELECT = sql`
-  h.id, h.case_id, cs.case_number, cs.title AS case_title, m.id AS matter_id, m.title AS matter_title,
+  h.id, h.case_id, cs.case_number, cs.cnr, cs.title AS case_title, m.id AS matter_id, m.title AS matter_title,
   cl.id AS client_id, cl.name AS client_name, ct.name AS court_name,
   h.scheduled_date::text AS scheduled_date, to_char(h.start_time, 'HH24:MI') AS start_time,
   to_char(h.end_time, 'HH24:MI') AS end_time, h.courtroom, h.bench_judge, h.hearing_type, h.status, h.outcome, h.client_summary,
@@ -75,6 +77,7 @@ export const toHearingDto = (r: HearingRow): HearingDto => ({
   id: r.id,
   caseId: r.case_id,
   caseNumber: r.case_number,
+  cnr: r.cnr,
   caseTitle: r.case_title,
   matterId: r.matter_id,
   matterTitle: r.matter_title,
@@ -146,6 +149,29 @@ export async function listHearings(
   else if (f.status) where.push(sql`h.status = ${f.status}`);
   const order = f.matterId || f.caseId ? sql`h.scheduled_date DESC, h.start_time DESC NULLS LAST` : undefined;
   return queryHearings(deps.pool, ctx, where, order);
+}
+
+/**
+ * The printable daily diary ("board"): the day's non-cancelled hearings the caller can see, each with what happened at
+ * the case's last held hearing. scope 'mine' narrows to matters the caller is on, even for partners.
+ */
+export async function getDiary(deps: Deps, ctx: TenantContext, f: z.output<typeof diarySchema>): Promise<DiaryDto> {
+  const date = f.date ?? (await queryOne<{ d: string }>(deps.pool, sql`SELECT (${await orgToday(deps.pool, ctx.organizationId)}::date + 1)::text AS d`))!.d;
+  const where: SqlFragment[] = [sql`h.scheduled_date = ${date}`, sql`h.status <> 'cancelled'`];
+  if (f.scope === 'mine') where.push(sql`EXISTS (SELECT 1 FROM matter_staff s WHERE s.matter_id = m.id AND s.user_id = ${ctx.userId})`);
+  const hearings = await queryHearings(deps.pool, ctx, where, sql`ct.name NULLS LAST, h.courtroom NULLS LAST, h.start_time NULLS LAST, cs.case_number`);
+  const caseIds = [...new Set(hearings.map((h) => h.caseId))];
+  const prev = caseIds.length
+    ? await query<{ case_id: string; date: string; result: 'completed' | 'adjourned'; outcome: string | null }>(
+        deps.pool,
+        sql`SELECT DISTINCT ON (case_id) case_id, scheduled_date::text AS date, status AS result, outcome FROM hearings
+            WHERE organization_id = ${ctx.organizationId} AND case_id = ANY(${caseIds}::uuid[])
+              AND status IN ('completed', 'adjourned') AND scheduled_date < ${date}
+            ORDER BY case_id, scheduled_date DESC, completed_at DESC NULLS LAST`,
+      )
+    : [];
+  const byCase = new Map(prev.map((p) => [p.case_id, { date: p.date, result: p.result, outcome: p.outcome }]));
+  return { date, rows: hearings.map((h) => ({ ...h, previous: byCase.get(h.caseId) ?? null })) };
 }
 
 export async function getHearing(db: Db, ctx: TenantContext, id: string): Promise<HearingDto> {

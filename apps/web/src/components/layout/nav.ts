@@ -3,6 +3,7 @@ import {
   Banknote,
   Briefcase,
   CalendarDays,
+  CalendarSync,
   CheckSquare,
   Home,
   Mail,
@@ -30,4 +31,5 @@ export const SETTINGS_NAV: NavItem[] = [
   { to: '/settings/firm', label: 'Firm settings', icon: Settings, permission: 'organization.manage' },
   { to: '/settings/automations', label: 'Automations', icon: Zap, permission: 'workflows.manage' },
   { to: '/settings/members', label: 'Team', icon: Users, permission: 'dashboard.view' },
+  { to: '/settings/calendar', label: 'Calendar sync', icon: CalendarSync, permission: 'matters.view' },
 ];

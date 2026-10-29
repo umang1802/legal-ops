@@ -1,9 +1,9 @@
 import { seesAllMatters, type HearingDto } from '@legalops/types';
 import { Alert, Button, Card, cn, EmptyState, SkeletonList } from '@legalops/ui';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Plus, Printer } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { api, qs } from '../../lib/api.js';
 import { canAct, useSession } from '../../lib/auth.js';
 import { addDays, formatTime, fullName, relativeDay, todayIn } from '../../lib/format.js';
@@ -79,11 +79,19 @@ export function CalendarPage() {
     <>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Calendar</h1>
-        {canAct(me, 'hearings.manage') ? (
-          <Button icon={<Plus className="size-4" />} onClick={() => setScheduling(true)}>
-            Schedule hearing
-          </Button>
-        ) : null}
+        <div className="flex flex-wrap gap-2">
+          {/* Reading, not editing: available to everyone who can see the calendar, including suspended firms. */}
+          <Link to="/diary" target="_blank">
+            <Button variant="secondary" icon={<Printer className="size-4" />}>
+              Print diary
+            </Button>
+          </Link>
+          {canAct(me, 'hearings.manage') ? (
+            <Button icon={<Plus className="size-4" />} onClick={() => setScheduling(true)}>
+              Schedule hearing
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">

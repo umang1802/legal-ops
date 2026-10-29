@@ -18,6 +18,7 @@ export const updateOrganizationSchema = z
     stateCode: nullable(stateCodeSchema),
     timezone: z.string().trim().min(1).max(64).optional(),
     remindersEnabled: z.boolean().optional(),
+    calendarHideParties: z.boolean().optional(),
     invoicePrefix: z
       .string()
       .trim()
