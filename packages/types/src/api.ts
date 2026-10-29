@@ -63,8 +63,10 @@ export type OrganizationDto = {
   address: string | null;
   city: string | null;
   state: string | null;
+  pincode: string | null;
   stateCode: string | null;
   timezone: string;
+  remindersEnabled: boolean;
   currency: string;
   invoicePrefix: string;
   taxMode: 'simple' | 'gst';

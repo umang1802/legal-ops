@@ -457,6 +457,25 @@ describe('automations: settings API', () => {
     expect(email.to('raj@client.test')).toHaveLength(0);
   });
 
+  it('the firm-wide reminders switch skips reminders that fall due while it is off, and resumes when it is on', async () => {
+    const { owner, main, today, email, run } = await setup();
+    const date = addDays(today, 3);
+    await post(owner, '/hearings', { caseId: main.caseId, scheduledDate: date });
+    await run(new Date());
+    const setReminders = (remindersEnabled: boolean) =>
+      owner.agent.patch('/api/v1/organization').set('X-CSRF-Token', owner.csrf).send({ remindersEnabled });
+    expect((await setReminders(false)).body.data.remindersEnabled).toBe(false);
+    await run(ist(addDays(date, -1), '09:30'));
+    expect(email.to('raj@client.test')).toHaveLength(0);
+    const skipped = await pool.query(
+      `SELECT count(*)::int AS n FROM scheduled_actions WHERE status = 'skipped' AND result->>'reason' = 'Reminders are switched off for this firm'`,
+    );
+    expect(skipped.rows[0].n).toBeGreaterThan(0);
+    expect((await setReminders(true)).body.data.remindersEnabled).toBe(true);
+    await run(ist(date, '07:45'));
+    expect(email.to('raj@client.test').length).toBeGreaterThan(0);
+  });
+
   it('the dev test clock endpoint runs a pass', async () => {
     const { owner } = await setup();
     const res = await post(owner, '/dev/worker/tick', { asOf: new Date().toISOString() });

@@ -308,6 +308,12 @@ export async function executeScheduledAction(deps: Deps, id: string, now: Date):
     };
     const wf = await queryOne<WorkflowRow>(tx, sql`SELECT * FROM workflows WHERE id = ${sa.workflow_id}`);
     if (!wf || !wf.is_active) return finish('cancelled', { reason: 'Automation switched off' });
+    // Firm-wide reminders switch (Firm settings). A reminder is an email sent on a schedule relative to a date;
+    // ones that fall due while it is off are skipped, never held back, and later ones resume once it is on again.
+    if (wf.trigger_config.timing === 'relative' && sa.payload.action.type === 'notify') {
+      const org = await queryOne<{ reminders_enabled: boolean }>(tx, sql`SELECT reminders_enabled FROM organizations WHERE id = ${sa.organization_id}`);
+      if (org && !org.reminders_enabled) return finish('skipped', { reason: 'Reminders are switched off for this firm' });
+    }
 
     const context = await buildContext(tx, sa.organization_id, sa.payload.refs, now, deps.env.APP_URL);
     // Suspended firms send nothing; due actions are recorded as skipped, never deferred (L-12).

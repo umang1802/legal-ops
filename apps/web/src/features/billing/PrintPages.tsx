@@ -57,7 +57,7 @@ function FirmHeader({
       <div>
         <p className="text-lg font-semibold">{org.legalName ?? org.name}</p>
         <p className="text-xs text-gray-600">
-          {[org.address, org.city, org.state].filter(Boolean).join(', ')}
+          {[org.address, org.city, org.state, org.pincode].filter(Boolean).join(', ')}
         </p>
         <p className="text-xs text-gray-600">{[org.email, org.phone].filter(Boolean).join(' · ')}</p>
         {org.gstin ? <p className="text-xs text-gray-600">GSTIN {org.gstin}</p> : null}

@@ -133,6 +133,18 @@ describe('organization settings', () => {
     expect(ok.body.data).toMatchObject({ taxMode: 'gst', gstin: '07AAACS1234A1Z5' });
   });
 
+  it('stores the PIN code separately and rejects a malformed one', async () => {
+    await createFirm('Firm A', [{ email: 'owner@a.test', role: 'owner' }]);
+    const { agent, csrf } = await loginAs(app, 'owner@a.test');
+    const bad = await agent.patch('/api/v1/organization').set('X-CSRF-Token', csrf).send({ pincode: '01234' });
+    expect(bad.status).toBe(422);
+    const ok = await agent.patch('/api/v1/organization').set('X-CSRF-Token', csrf).send({ pincode: ' 110001 ' });
+    expect(ok.status).toBe(200);
+    expect(ok.body.data.pincode).toBe('110001');
+    const cleared = await agent.patch('/api/v1/organization').set('X-CSRF-Token', csrf).send({ pincode: null });
+    expect(cleared.body.data.pincode).toBeNull();
+  });
+
   it('staff cannot change firm settings', async () => {
     await createFirm('Firm A', [{ email: 'staff@a.test', role: 'staff' }]);
     const { agent, csrf } = await loginAs(app, 'staff@a.test');

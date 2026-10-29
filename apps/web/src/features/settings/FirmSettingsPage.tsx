@@ -28,8 +28,12 @@ const formSchema = z.object({
   address: z.string(),
   city: z.string(),
   state: z.string(),
+  pincode: z
+    .string()
+    .refine((v) => v.trim() === '' || /^[1-9][0-9]{5}$/.test(v.trim()), { error: 'Use the 6-digit PIN code' }),
   stateCode: z.string(),
   timezone: z.string().min(1),
+  remindersEnabled: z.boolean(),
   invoicePrefix: z.string(),
   taxMode: z.enum(['simple', 'gst']),
   gstin: z.string(),
@@ -46,8 +50,10 @@ const toForm = (o: OrganizationDto): FormValues => ({
   address: o.address ?? '',
   city: o.city ?? '',
   state: o.state ?? '',
+  pincode: o.pincode ?? '',
   stateCode: o.stateCode ?? '',
   timezone: o.timezone,
+  remindersEnabled: o.remindersEnabled,
   invoicePrefix: o.invoicePrefix,
   taxMode: o.taxMode,
   gstin: o.gstin ?? '',
@@ -62,6 +68,7 @@ const NULLABLE = [
   'address',
   'city',
   'state',
+  'pincode',
   'stateCode',
   'gstin',
   'pan',
@@ -137,6 +144,15 @@ export function FirmSettingsPage() {
           </div>
           <TextField label="City" {...form.register('city')} />
           <TextField label="State" {...form.register('state')} />
+          <TextField
+            label="PIN code"
+            inputMode="numeric"
+            autoComplete="postal-code"
+            maxLength={6}
+            hint="6 digits, e.g. 110001"
+            error={errors.pincode?.message}
+            {...form.register('pincode')}
+          />
         </CardBody>
       </Card>
 
@@ -193,6 +209,17 @@ export function FirmSettingsPage() {
       <Card>
         <CardHeader title="Reminders" />
         <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <label className="flex items-start gap-3 text-sm sm:col-span-2">
+            <input type="checkbox" className="mt-0.5 size-4" {...form.register('remindersEnabled')} />
+            <span>
+              <span className="font-medium">Send reminders</span>
+              <span className="block text-muted">
+                Hearing and payment-due reminders to your team and clients. Turn this off to stop all of them at
+                once; reminders that fall due while it is off are skipped, not sent later. Other emails
+                (invitations, invoices, receipts, task assignments) are not affected.
+              </span>
+            </span>
+          </label>
           <TextField label="Timezone" error={errors.timezone?.message} {...form.register('timezone')} />
           <TextField
             label="Default reminder send time"

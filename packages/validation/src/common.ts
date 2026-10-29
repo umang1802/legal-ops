@@ -23,6 +23,7 @@ export const PAN_REGEX = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 export const gstinSchema = z.string().trim().toUpperCase().regex(GSTIN_REGEX, { error: 'Invalid GSTIN' });
 export const panSchema = z.string().trim().toUpperCase().regex(PAN_REGEX, { error: 'Invalid PAN' });
 export const stateCodeSchema = z.string().regex(/^\d{2}$/, { error: 'Use the 2-digit GST state code' });
+export const pincodeSchema = z.string().trim().regex(/^[1-9][0-9]{5}$/, { error: 'Use the 6-digit PIN code' });
 
 export const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),

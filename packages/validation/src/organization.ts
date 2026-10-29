@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { emailSchema, gstinSchema, panSchema, stateCodeSchema } from './common.js';
+import { emailSchema, gstinSchema, panSchema, pincodeSchema, stateCodeSchema } from './common.js';
 
 const ASSIGNABLE_ROLES = ['owner', 'admin', 'lawyer', 'staff', 'finance', 'read_only'] as const;
 
@@ -14,8 +14,10 @@ export const updateOrganizationSchema = z
     address: nullable(z.string().trim().max(2000)),
     city: nullable(z.string().trim().max(120)),
     state: nullable(z.string().trim().max(120)),
+    pincode: nullable(pincodeSchema),
     stateCode: nullable(stateCodeSchema),
     timezone: z.string().trim().min(1).max(64).optional(),
+    remindersEnabled: z.boolean().optional(),
     invoicePrefix: z
       .string()
       .trim()
