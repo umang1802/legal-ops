@@ -18,6 +18,7 @@ import { Link, useParams } from 'react-router';
 import { ApiError } from '../lib/api.js';
 import { platformApi } from './api.js';
 import { STATUS } from './FirmsPage.js';
+import { PendingInvitesCard } from './PendingInvitesCard.js';
 
 const when = (s: string | null) =>
   s ? new Date(s).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
@@ -130,6 +131,7 @@ export function FirmDetailPage() {
               />
             </CardBody>
           </Card>
+          <PendingInvitesCard firmId={f.id} suspended={f.status === 'suspended'} />
           <Card>
             <CardHeader title="History" />
             <CardBody>

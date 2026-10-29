@@ -142,6 +142,20 @@ export function platformRouter(deps: Deps, limits: RateLimits): Router {
     const input = parse(reinviteFirmSchema, req.body);
     res.json({ data: await firms.reinviteFirm(deps, platformCtx(req), parse(uuidSchema, req.params.firmId), input, requestMeta(req)) });
   });
+  r.get('/firms/:firmId/invitations', async (req, res) => {
+    res.json({ data: await firms.listPendingInvitations(deps.pool, parse(uuidSchema, req.params.firmId)) });
+  });
+  r.post('/firms/:firmId/invitations/:invitationId/link', async (req, res) => {
+    const data = await firms.issueInviteLink(
+      deps,
+      platformCtx(req),
+      parse(uuidSchema, req.params.firmId),
+      parse(uuidSchema, req.params.invitationId),
+      requestMeta(req),
+    );
+    // The link is a credential: never cache it anywhere between here and the admin's screen.
+    res.set('Cache-Control', 'no-store').json({ data });
+  });
   r.get('/audit-logs', async (req, res) => {
     const { items, meta } = await firms.listPlatformAudit(deps.pool, parse(listPlatformAuditSchema, req.query));
     res.json({ data: items, meta });
