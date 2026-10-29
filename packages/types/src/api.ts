@@ -67,6 +67,8 @@ export type OrganizationDto = {
   stateCode: string | null;
   timezone: string;
   remindersEnabled: boolean;
+  /** Calendar sync shows only case numbers and court, not parties, client or matter names. */
+  calendarHideParties: boolean;
   currency: string;
   invoicePrefix: string;
   taxMode: 'simple' | 'gst';

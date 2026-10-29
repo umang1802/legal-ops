@@ -22,6 +22,7 @@ import { TasksPage } from './features/tasks/TasksPage.js';
 import { MorePage } from './features/more/MorePage.js';
 import { FirmSettingsPage } from './features/settings/FirmSettingsPage.js';
 import { MembersPage } from './features/settings/MembersPage.js';
+import { CalendarSyncPage } from './features/settings/CalendarSyncPage.js';
 
 // Route-level code splitting: billing, print views and the calendar load on first visit.
 const BillingPage = lazy(() =>
@@ -58,6 +59,12 @@ const InvoicePrintPage = lazy(() =>
   import('./features/billing/PrintPages.js').then((m) => ({ default: m.InvoicePrintPage })),
 );
 const PlatformApp = lazy(() => import('./platform/PlatformApp.js').then((m) => ({ default: m.PlatformApp })));
+const DiaryPrintPage = lazy(() =>
+  import('./features/diary/DiaryPrintPage.js').then((m) => ({ default: m.DiaryPrintPage })),
+);
+const MatterHistoryPrintPage = lazy(() =>
+  import('./features/diary/MatterHistoryPrintPage.js').then((m) => ({ default: m.MatterHistoryPrintPage })),
+);
 const ReceiptPrintPage = lazy(() =>
   import('./features/billing/PrintPages.js').then((m) => ({ default: m.ReceiptPrintPage })),
 );
@@ -92,6 +99,24 @@ const router = createBrowserRouter([
         element: (
           <RequirePermission permission="billing.view">
             <ReceiptPrintPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        // Printable daily hearings board (outside the app shell so it prints cleanly).
+        path: '/diary',
+        element: (
+          <RequirePermission permission="matters.view">
+            <DiaryPrintPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        // Printable matter history (internal; outside the app shell so it prints cleanly).
+        path: '/matters/:matterId/history',
+        element: (
+          <RequirePermission permission="matters.view">
+            <MatterHistoryPrintPage />
           </RequirePermission>
         ),
       },
@@ -169,6 +194,7 @@ const router = createBrowserRouter([
             ),
           },
           { path: '/settings/members', element: <MembersPage /> },
+          { path: '/settings/calendar', element: <CalendarSyncPage /> },
           {
             path: '/communication',
             element: (

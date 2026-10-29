@@ -5,43 +5,12 @@ import {
   type OrganizationDto,
   type PaymentDto,
 } from '@legalops/types';
-import { Button, Spinner } from '@legalops/ui';
 import { useQuery } from '@tanstack/react-query';
-import { Printer } from 'lucide-react';
-import type { ReactNode } from 'react';
 import { useParams } from 'react-router';
 import { api } from '../../lib/api.js';
 import { formatDate } from '../../lib/format.js';
 import { formatINR, isZero } from '../../lib/money.js';
-
-/**
- * Print-ready documents (browser "Save as PDF"). Server-side PDF generation and storage is a later
- * step; this keeps V1 honest and dependency-free.
- */
-function PrintShell({ title, children, ready }: { title: string; children: ReactNode; ready: boolean }) {
-  if (!ready) {
-    return (
-      <div className="grid min-h-dvh place-items-center">
-        <Spinner className="size-6 text-brand-700" />
-      </div>
-    );
-  }
-  return (
-    <div className="min-h-dvh bg-canvas py-6 print:bg-white print:py-0">
-      <div className="mx-auto mb-4 flex max-w-3xl justify-end px-4 print:hidden">
-        <Button icon={<Printer className="size-4" />} onClick={() => window.print()}>
-          Print / Save as PDF
-        </Button>
-      </div>
-      <article
-        aria-label={title}
-        className="mx-auto max-w-3xl bg-white px-6 py-8 text-sm text-black shadow-sm sm:px-10 print:max-w-none print:shadow-none"
-      >
-        {children}
-      </article>
-    </div>
-  );
-}
+import { PrintShell } from '../../components/print/PrintShell.js';
 
 function FirmHeader({
   org,

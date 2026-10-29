@@ -70,6 +70,11 @@ export const cancelHearingSchema = z
   .object({ reason: z.string().trim().min(1, { error: 'Give a reason' }).max(1000) })
   .strict();
 
+/** The printable daily diary: one date (default: tomorrow in the firm's timezone); whole firm or only my matters. */
+export const diarySchema = z
+  .object({ date: isoDate.optional(), scope: z.enum(['all', 'mine']).default('all') })
+  .strict();
+
 export const listHearingsSchema = z
   .object({
     from: isoDate.optional(),

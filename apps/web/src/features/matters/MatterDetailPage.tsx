@@ -40,6 +40,7 @@ import {
   Mail,
   Pencil,
   Plus,
+  Printer,
   Scale,
   Users,
   X,
@@ -158,6 +159,7 @@ export function MatterDetailPage() {
           />
         ) : null}
         <QuickAction icon={<Mail />} label="Client update" soon />
+        <QuickAction icon={<Printer />} label="Print history" onClick={() => window.open(`/matters/${m.id}/history`, '_blank')} />
       </div>
 
       <Tabs
