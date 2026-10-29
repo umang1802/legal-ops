@@ -1,9 +1,10 @@
-import { can, type SearchResultsDto } from '@legalops/types';
+import type { SearchResultsDto } from '@legalops/types';
 import { query } from '../../db/pool.js';
 import { sql } from '../../db/sql.js';
 import type { Deps } from '../../deps.js';
 import type { TenantContext } from '../../http/context.js';
 import { likeContains } from '../../http/query-helpers.js';
+import { allowed } from '../../middleware/security.js';
 import { matterVisible } from '../access/matter-scope.js';
 
 const LIMIT = 5;
@@ -15,7 +16,7 @@ export async function search(deps: Deps, ctx: TenantContext, q: string): Promise
   const org = ctx.organizationId;
 
   const [clients, matters, cases, invoices] = await Promise.all([
-    can(ctx.role, 'clients.view')
+    allowed(ctx, 'clients.view')
       ? query<{ id: string; name: string; email: string | null; phone: string | null }>(
           deps.pool,
           sql`SELECT id, name, email, phone FROM clients
@@ -40,7 +41,7 @@ export async function search(deps: Deps, ctx: TenantContext, q: string): Promise
             AND (cs.case_number ILIKE ${p} OR cs.cnr ILIKE ${p} OR cs.title ILIKE ${p})
           ORDER BY cs.updated_at DESC LIMIT ${LIMIT}`,
     ),
-    can(ctx.role, 'billing.view')
+    allowed(ctx, 'billing.view')
       ? query<{ id: string; invoice_number: string; matter_id: string; client_name: string }>(
           deps.pool,
           sql`SELECT i.id, i.invoice_number, i.matter_id, c.name AS client_name

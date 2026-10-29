@@ -13,6 +13,7 @@ export const inviteFirmSchema = z
   .strict();
 export const reinviteFirmSchema = inviteFirmSchema.pick({ partnerName: true, partnerEmail: true }).strict();
 export const firmNotesSchema = z.object({ platformNotes: z.string().max(10000).nullable() }).strict();
+export const setFirmFeatureSchema = z.object({ enabled: z.boolean() }).strict();
 export const suspendFirmSchema = z.object({ reason: z.string().trim().min(1, { error: 'Give a reason' }).max(500) }).strict();
 export const listFirmsSchema = z.object({
   search: z.string().trim().max(200).optional(),

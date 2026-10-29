@@ -1,4 +1,4 @@
-import { allowedWhileSuspended, can, type MeResponse, type Permission } from '@legalops/types';
+import { allowedWhileSuspended, canWithFeatures, type FeatureKey, type MeResponse, type Permission } from '@legalops/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, setCsrfToken } from './api.js';
 
@@ -38,12 +38,22 @@ export function useSession(): MeResponse {
  */
 export function canAct(me: MeResponse, permission: Permission): boolean {
   if (me.organization.status === 'suspended' && !allowedWhileSuspended(permission)) return false;
-  return can(me.role, permission);
+  return canWithFeatures(me.role, me.features, permission);
+}
+
+/** Is this switchable feature on for the firm? (Permissions tied to a feature are covered by canAct.) */
+export function hasFeature(me: MeResponse, feature: FeatureKey): boolean {
+  return me.features.includes(feature);
 }
 
 export function useCan(permission: Permission): boolean {
   const { data } = useMe();
   return data ? canAct(data, permission) : false;
+}
+
+export function useFeature(feature: FeatureKey): boolean {
+  const { data } = useMe();
+  return data ? hasFeature(data, feature) : false;
 }
 
 export function useLogin() {

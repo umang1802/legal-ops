@@ -15,6 +15,8 @@ export const unauthenticated = (message = 'Please sign in to continue') =>
   new AppError(401, 'UNAUTHENTICATED', message);
 export const forbidden = (message = 'You do not have permission to do this') =>
   new AppError(403, 'FORBIDDEN', message);
+/** A switchable feature that's off for this firm: answered like a route that doesn't exist. */
+export const featureDisabled = () => new AppError(404, 'FEATURE_DISABLED', 'This isn’t available for your firm.');
 export const notFound = (what = 'Record') => new AppError(404, 'NOT_FOUND', `${what} not found`);
 export const conflict = (message: string) => new AppError(409, 'CONFLICT', message);
 export const validationError = (message: string, details?: unknown[]) =>

@@ -1,8 +1,9 @@
-import type { NotifyRecipient, WorkflowAction, WorkflowCondition, WorkflowTiming, WorkflowTrigger } from '@legalops/types';
+import type { FeatureKey, NotifyRecipient, WorkflowAction, WorkflowCondition, WorkflowTiming, WorkflowTrigger } from '@legalops/types';
 import { query, queryOne, withTransaction, type Db } from '../../db/pool.js';
 import { sql } from '../../db/sql.js';
 import type { Deps } from '../../deps.js';
 import type { TenantContext } from '../../http/context.js';
+import { loadEnabledFeatures } from '../features/features.service.js';
 import { buildContext, flatten, type ContextRefs, type TemplateContext } from '../notifications/context.js';
 import { createNotification, type Recipient } from '../notifications/notifications.service.js';
 import { createTaskInTx } from '../tasks/tasks.service.js';
@@ -19,7 +20,16 @@ export type WorkflowRow = {
   requires_approval: boolean;
   is_active: boolean;
   created_by: string | null;
+  /** Set for the built-in recipes; null for rules the firm created. */
+  system_key: string | null;
 };
+
+const BILLING_TRIGGERS: readonly WorkflowTrigger[] = ['INVOICE_CREATED', 'INVOICE_PAID', 'PAYMENT_RECEIVED'];
+
+/** Switchable features a rule needs: Billing for invoice and payment events, Automations for the firm's own rules. */
+export function workflowFeatures(wf: Pick<WorkflowRow, 'system_key' | 'trigger_type'>): FeatureKey[] {
+  return [...(BILLING_TRIGGERS.includes(wf.trigger_type) ? (['billing'] as const) : []), ...(wf.system_key === null ? (['automations'] as const) : [])];
+}
 
 export type OutboxEvent = { id: string; organization_id: string; event_type: string; aggregate_type: string; aggregate_id: string; payload: Record<string, unknown> };
 
@@ -308,6 +318,15 @@ export async function executeScheduledAction(deps: Deps, id: string, now: Date):
     };
     const wf = await queryOne<WorkflowRow>(tx, sql`SELECT * FROM workflows WHERE id = ${sa.workflow_id}`);
     if (!wf || !wf.is_active) return finish('cancelled', { reason: 'Automation switched off' });
+    // Per-firm features (platform console): actions of a switched-off feature are skipped, never held back. Client
+    // emails that need approval are skipped too while Communication is off, since nobody could approve them.
+    const features = await loadEnabledFeatures(tx, sa.organization_id);
+    const off = workflowFeatures(wf).find((f) => !features.includes(f));
+    if (off) return finish('skipped', { reason: `feature_off:${off}` });
+    const { action: planned } = sa.payload;
+    if (planned.type === 'notify' && planned.recipient === 'client' && wf.requires_approval && !features.includes('communication')) {
+      return finish('skipped', { reason: 'feature_off:communication' });
+    }
     // Firm-wide reminders switch (Firm settings). A reminder is an email sent on a schedule relative to a date;
     // ones that fall due while it is off are skipped, never held back, and later ones resume once it is on again.
     if (wf.trigger_config.timing === 'relative' && sa.payload.action.type === 'notify') {
@@ -396,5 +415,5 @@ async function systemActor(db: Db, organizationId: string, createdBy: string | n
   const userId =
     createdBy ??
     (await queryOne<{ user_id: string }>(db, sql`SELECT user_id FROM organization_members WHERE organization_id = ${organizationId} AND role = 'owner' ORDER BY joined_at LIMIT 1`))!.user_id;
-  return { organizationId, userId, role: 'owner' };
+  return { organizationId, userId, role: 'owner', features: await loadEnabledFeatures(db, organizationId) };
 }

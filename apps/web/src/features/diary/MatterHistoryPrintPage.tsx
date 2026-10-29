@@ -15,7 +15,7 @@ import type { ReactNode } from 'react';
 import { Link, useParams } from 'react-router';
 import { PrintShell } from '../../components/print/PrintShell.js';
 import { api, qs } from '../../lib/api.js';
-import { useSession } from '../../lib/auth.js';
+import { canAct, useSession } from '../../lib/auth.js';
 import { formatDate, formatTime, fullName } from '../../lib/format.js';
 
 /** Every timeline entry for a matter (the API pages at 100; a long matter's history must still print in full). */
@@ -43,10 +43,12 @@ export function MatterHistoryPrintPage() {
     queryKey: ['documents', 'matter', matterId, 'print'],
     queryFn: () => api.get<DocumentDto[]>(`/documents${qs({ matterId })}`),
     retry: false, // users without documents.view get a 403: just leave the section out
+    enabled: canAct(me, 'documents.view'), // and when the firm's Documents feature is off
   });
   const timeline = useQuery({ queryKey: ['matter', matterId, 'timeline', 'all'], queryFn: () => fetchAllTimeline(matterId) });
 
-  const ready = !matter.isPending && !hearings.isPending && !timeline.isPending && !docs.isPending;
+  // A disabled query stays pending, so it only holds up printing when it's actually loading.
+  const ready = !matter.isPending && !hearings.isPending && !timeline.isPending && !docs.isLoading;
   const m = matter.data;
   const record = [...(hearings.data ?? [])].filter((h) => h.status !== 'scheduled' || h.pendingOutcome).sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
   const upcoming = (hearings.data ?? []).filter((h) => h.status === 'scheduled' && !h.pendingOutcome).sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));

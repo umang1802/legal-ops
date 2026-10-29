@@ -6,6 +6,7 @@ import {
   listPlatformAuditSchema,
   platformLoginSchema,
   reinviteFirmSchema,
+  setFirmFeatureSchema,
   suspendFirmSchema,
   totpCodeSchema,
   uuidSchema,
@@ -14,7 +15,8 @@ import { Router, type CookieOptions, type NextFunction, type Request, type Respo
 import { rateLimit } from 'express-rate-limit';
 import type { Deps } from '../../deps.js';
 import type { PlatformAuth } from '../../http/context.js';
-import { AppError, unauthenticated } from '../../http/errors.js';
+import { isFeatureKey } from '@legalops/types';
+import { AppError, unauthenticated, validationError } from '../../http/errors.js';
 import { parse } from '../../http/validate.js';
 import { requestMeta } from '../../middleware/request-context.js';
 import { requireJson } from '../../middleware/security.js';
@@ -155,6 +157,15 @@ export function platformRouter(deps: Deps, limits: RateLimits): Router {
     );
     // The link is a credential: never cache it anywhere between here and the admin's screen.
     res.set('Cache-Control', 'no-store').json({ data });
+  });
+  r.get('/firms/:firmId/features', async (req, res) => {
+    res.json({ data: await firms.getFirmFeatures(deps.pool, parse(uuidSchema, req.params.firmId)) });
+  });
+  r.patch('/firms/:firmId/features/:key', async (req, res) => {
+    const key = req.params.key;
+    if (!isFeatureKey(key)) throw validationError(`Unknown feature "${key}"`);
+    const { enabled } = parse(setFirmFeatureSchema, req.body);
+    res.json({ data: await firms.setFirmFeatureAsAdmin(deps, platformCtx(req), parse(uuidSchema, req.params.firmId), key, enabled, requestMeta(req)) });
   });
   r.get('/audit-logs', async (req, res) => {
     const { items, meta } = await firms.listPlatformAudit(deps.pool, parse(listPlatformAuditSchema, req.query));

@@ -8,6 +8,7 @@ import {
   PRACTICE_AREAS,
   PRIORITIES,
   PRIORITY_LABELS,
+  type FeatureKey,
   type MatterDetailDto,
   type MatterStaffRole,
   type HearingDto,
@@ -50,7 +51,7 @@ import { useForm } from 'react-hook-form';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { z } from 'zod';
 import { api, ApiError, qs } from '../../lib/api.js';
-import { canAct, useSession } from '../../lib/auth.js';
+import { canAct, hasFeature, useSession } from '../../lib/auth.js';
 import { formatDate, formatDateTime, fullName, relativeTime, todayIn } from '../../lib/format.js';
 import { useMembers } from '../../lib/hooks.js';
 import { CASE_STATUS_TONE, MATTER_STATUS_TONE, PRIORITY_TONE } from '../../lib/status.js';
@@ -74,13 +75,16 @@ const TABS = [
   { key: 'communication', label: 'Communication' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
+/** Tabs that belong to a switchable feature: hidden when it's off for the firm. */
+const TAB_FEATURE: Partial<Record<TabKey, FeatureKey>> = { documents: 'documents', billing: 'billing', communication: 'communication' };
 
 export function MatterDetailPage() {
   const { matterId = '' } = useParams();
   const me = useSession();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
-  const tab = (TABS.find((t) => t.key === params.get('tab'))?.key ?? 'overview') as TabKey;
+  const tabs = TABS.filter((t) => !TAB_FEATURE[t.key] || hasFeature(me, TAB_FEATURE[t.key]!));
+  const tab = (tabs.find((t) => t.key === params.get('tab'))?.key ?? 'overview') as TabKey;
   const [editing, setEditing] = useState(false);
   const [addingCase, setAddingCase] = useState(false);
   const [managingTeam, setManagingTeam] = useState(false);
@@ -169,13 +173,15 @@ export function MatterDetailPage() {
             onClick={() => navigate(`/invoices/new?matterId=${m.id}`)}
           />
         ) : null}
-        <QuickAction icon={<Mail />} label="Client update" soon />
-        <QuickAction icon={<Printer />} label="Print history" onClick={() => window.open(`/matters/${m.id}/history`, '_blank')} />
+        {hasFeature(me, 'communication') ? <QuickAction icon={<Mail />} label="Client update" soon /> : null}
+        {hasFeature(me, 'diary') ? (
+          <QuickAction icon={<Printer />} label="Print history" onClick={() => window.open(`/matters/${m.id}/history`, '_blank')} />
+        ) : null}
       </div>
 
       <Tabs
         label="Matter sections"
-        items={TABS}
+        items={tabs}
         value={tab}
         onChange={(k) => setParams({ tab: k }, { replace: true })}
       />

@@ -19,6 +19,7 @@ import { DisabledDocumentStorage } from '../integrations/storage/s3-storage.js';
 import { DisabledEmailProvider } from '../modules/notifications/providers.js';
 import { createExpense } from '../modules/billing/expenses.service.js';
 import { createFeeAgreement } from '../modules/billing/fee-agreements.service.js';
+import { loadEnabledFeatures } from '../modules/features/features.service.js';
 import { createInvoice } from '../modules/billing/invoices.service.js';
 import { recordPayment } from '../modules/billing/payments.service.js';
 
@@ -36,7 +37,7 @@ try {
         WHERE o.name = 'Sharma & Associates' LIMIT 1`,
   );
   if (!org) throw new Error('Run the base seed first');
-  const ctx: TenantContext = { organizationId: org.id, userId: org.owner, role: 'owner' };
+  const ctx: TenantContext = { organizationId: org.id, userId: org.owner, role: 'owner', features: await loadEnabledFeatures(pool, org.id) };
   const day = async (offset: number) =>
     (await queryOne<{ d: string }>(pool, sql`SELECT (${org.today}::date + ${offset}::int)::text AS d`))!.d;
   const matter = async (title: string) =>

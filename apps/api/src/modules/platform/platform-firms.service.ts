@@ -1,7 +1,9 @@
 import type {
+  FeatureKey,
   OrganizationStatus,
   PlatformAuditEntry,
   PlatformFirmDetail,
+  PlatformFirmFeature,
   PlatformFirmSummary,
   PlatformInvitationState,
   PlatformInviteLink,
@@ -14,6 +16,7 @@ import type { PlatformAuth, RequestMeta } from '../../http/context.js';
 import { conflict, notFound } from '../../http/errors.js';
 import { iso, likeContains, pageClause, type Page } from '../../http/query-helpers.js';
 import { issueInvitationToken } from '../auth/auth.service.js';
+import { listFirmFeatures, setFirmFeature, skipHeldEmails } from '../features/features.service.js';
 import { emitEvent } from '../outbox/outbox.service.js';
 import { recordPlatformAudit } from './platform-auth.service.js';
 
@@ -95,6 +98,23 @@ async function lockFirm(db: Db, id: string) {
   const org = await queryOne<{ id: string; status: OrganizationStatus }>(db, sql`SELECT id, status FROM organizations WHERE id = ${id} FOR UPDATE`);
   if (!org) throw notFound('Firm');
   return org;
+}
+
+export async function getFirmFeatures(db: Db, firmId: string): Promise<PlatformFirmFeature[]> {
+  if (!(await queryOne(db, sql`SELECT 1 FROM organizations WHERE id = ${firmId}`))) throw notFound('Firm');
+  return listFirmFeatures(db, firmId);
+}
+
+/** Switches one feature for a firm (allowed while it's suspended). Takes effect on the firm's next request. */
+export async function setFirmFeatureAsAdmin(deps: Deps, auth: PlatformAuth, firmId: string, key: FeatureKey, enabled: boolean, meta: RequestMeta) {
+  await withTransaction(deps.pool, async (tx) => {
+    await lockFirm(tx, firmId);
+    await setFirmFeature(tx, firmId, key, enabled, auth.adminId);
+    if (!enabled) await skipHeldEmails(tx, firmId, key);
+    const action = enabled ? 'firm.feature_enabled' : 'firm.feature_disabled';
+    await recordPlatformAudit(tx, { adminId: auth.adminId, action, organizationId: firmId, details: { feature: key }, ip: meta.ip });
+  });
+  return listFirmFeatures(deps.pool, firmId);
 }
 
 /** Revokes any open owner invite, creates a new one and queues the set-up email (link minted at send time). */

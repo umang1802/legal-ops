@@ -1,3 +1,4 @@
+import type { FeatureKey } from './features.js';
 import type { OrganizationStatus } from './platform.js';
 import type { Permission } from './permissions.js';
 import type { Role } from './roles.js';
@@ -17,6 +18,7 @@ export type ApiErrorCode =
   | 'NO_MEMBERSHIP'
   | 'TOKEN_INVALID'
   | 'NOT_CONFIGURED'
+  | 'FEATURE_DISABLED'
   | 'DUPLICATE_WARNING'
   | 'MFA_REQUIRED'
   | 'FIRM_SUSPENDED'
@@ -39,6 +41,8 @@ export type MeResponse = {
   organization: { id: string; name: string; timezone: string; currency: string; taxMode: 'simple' | 'gst'; status: OrganizationStatus };
   role: Role;
   permissions: readonly Permission[];
+  /** Switchable features that are on for this firm (see FEATURES). */
+  features: readonly FeatureKey[];
   memberships: MembershipSummary[];
   csrfToken: string;
 };
