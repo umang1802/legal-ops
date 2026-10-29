@@ -1,10 +1,19 @@
-import type { OrganizationStatus, PlatformAuditEntry, PlatformFirmDetail, PlatformFirmSummary, PlatformInvitationState } from '@legalops/types';
+import type {
+  OrganizationStatus,
+  PlatformAuditEntry,
+  PlatformFirmDetail,
+  PlatformFirmSummary,
+  PlatformInvitationState,
+  PlatformInviteLink,
+  PlatformPendingInvitation,
+} from '@legalops/types';
 import { query, queryOne, withTransaction, type Db } from '../../db/pool.js';
 import { sql } from '../../db/sql.js';
 import type { Deps } from '../../deps.js';
 import type { PlatformAuth, RequestMeta } from '../../http/context.js';
 import { conflict, notFound } from '../../http/errors.js';
 import { iso, likeContains, pageClause, type Page } from '../../http/query-helpers.js';
+import { issueInvitationToken } from '../auth/auth.service.js';
 import { emitEvent } from '../outbox/outbox.service.js';
 import { recordPlatformAudit } from './platform-auth.service.js';
 
@@ -199,4 +208,66 @@ export async function reinviteFirm(deps: Deps, auth: PlatformAuth, id: string, i
     await recordPlatformAudit(tx, { adminId: auth.adminId, action: 'firm.reinvited', organizationId: id, details: { partnerEmail: input.partnerEmail }, ip: meta.ip });
   });
   return getFirm(deps.pool, id);
+}
+
+/** Open invitations for a firm (owner and team), newest first. */
+export async function listPendingInvitations(db: Db, firmId: string): Promise<PlatformPendingInvitation[]> {
+  const firm = await queryOne<{ id: string }>(db, sql`SELECT id FROM organizations WHERE id = ${firmId}`);
+  if (!firm) throw notFound('Firm');
+  const rows = await query<{ id: string; email: string; role: string; inviter: string | null; from_platform: boolean; expires_at: Date; created_at: Date }>(
+    db,
+    sql`SELECT i.id, i.email, i.role, trim(u.first_name || ' ' || COALESCE(u.last_name, '')) AS inviter,
+               (i.invited_by_platform_admin_id IS NOT NULL) AS from_platform, i.expires_at, i.created_at
+        FROM invitations i LEFT JOIN users u ON u.id = i.invited_by
+        WHERE i.organization_id = ${firmId} AND i.accepted_at IS NULL AND i.revoked_at IS NULL
+        ORDER BY i.created_at DESC`,
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    email: r.email,
+    role: r.role,
+    invitedBy: r.from_platform ? 'LexForgeX team' : (r.inviter ?? ''),
+    expiresAt: r.expires_at.toISOString(),
+    expired: r.expires_at < new Date(),
+    createdAt: r.created_at.toISOString(),
+  }));
+}
+
+/**
+ * Mints a new accept-invite link for an open invitation so the team can share it without email (for example over
+ * WhatsApp). Minting replaces the stored token (the previous link stops working) and resets the 7-day expiry.
+ * The token is never stored or logged; the audit entry records who issued a link for whom.
+ */
+export async function issueInviteLink(
+  deps: Deps,
+  auth: PlatformAuth,
+  firmId: string,
+  invitationId: string,
+  meta: RequestMeta,
+): Promise<PlatformInviteLink> {
+  const inv = await queryOne<{ email: string; role: string; accepted: boolean; revoked: boolean; firm_status: OrganizationStatus }>(
+    deps.pool,
+    sql`SELECT i.email, i.role, (i.accepted_at IS NOT NULL) AS accepted, (i.revoked_at IS NOT NULL) AS revoked, o.status AS firm_status
+        FROM invitations i JOIN organizations o ON o.id = i.organization_id
+        WHERE i.id = ${invitationId} AND i.organization_id = ${firmId}`,
+  );
+  if (!inv) throw notFound('Invitation');
+  if (inv.accepted) throw conflict('This invitation has already been accepted');
+  if (inv.revoked) throw conflict('This invitation was revoked; send a new one');
+  if (inv.firm_status === 'suspended') throw conflict('This firm is suspended; reactivate it before inviting anyone');
+  const token = await issueInvitationToken(deps, invitationId);
+  const row = await queryOne<{ expires_at: Date }>(deps.pool, sql`SELECT expires_at FROM invitations WHERE id = ${invitationId}`);
+  await recordPlatformAudit(deps.pool, {
+    adminId: auth.adminId,
+    action: 'invite.link_issued',
+    organizationId: firmId,
+    details: { invitationId, email: inv.email, role: inv.role },
+    ip: meta.ip,
+  });
+  return {
+    url: `${deps.env.APP_URL.replace(/\/$/, '')}/accept-invite?token=${token}`,
+    email: inv.email,
+    role: inv.role,
+    expiresAt: row!.expires_at.toISOString(),
+  };
 }
