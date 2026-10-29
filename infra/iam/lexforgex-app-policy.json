@@ -19,6 +19,12 @@
       "Effect": "Allow",
       "Action": ["ses:SendEmail", "ses:SendRawEmail"],
       "Resource": ["arn:aws:ses:ap-south-1:*:identity/*", "arn:aws:ses:ap-south-1:*:configuration-set/*"]
+    },
+    {
+      "Sid": "MatterDocuments",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject", "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"],
+      "Resource": "arn:aws:s3:::lexforgex-prod-documents/*"
     }
   ]
 }

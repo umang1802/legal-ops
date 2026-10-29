@@ -4,10 +4,13 @@ import { completeHearingSchema } from '@legalops/validation';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { DOCUMENT_TYPES, documentExtension, MAX_DOCUMENT_BYTES } from '@legalops/types';
 import { api, ApiError } from '../../lib/api.js';
+import { canAct, useSession } from '../../lib/auth.js';
 import { formatDate, fullName } from '../../lib/format.js';
 import { useMembers } from '../../lib/hooks.js';
 import { invalidateWork } from '../../lib/invalidate.js';
+import { formatBytes, uploadDocument } from '../../lib/upload.js';
 
 type Action = { title: string; assigneeId: string; dueDate: string };
 
@@ -33,9 +36,16 @@ export function CompleteHearingSheet({
   const [nextTime, setNextTime] = useState('');
   const [actions, setActions] = useState<Action[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [order, setOrder] = useState<File | null>(null);
+  const [orderProgress, setOrderProgress] = useState<number | null>(null);
+  const [orderError, setOrderError] = useState<string | null>(null);
+  const canAttach = canAct(useSession(), 'documents.upload');
 
   useEffect(() => {
     if (!open) return;
+    setOrder(null);
+    setOrderProgress(null);
+    setOrderError(null);
     setResult('adjourned');
     setOutcome('');
     setClientSummary('');
@@ -51,8 +61,21 @@ export function CompleteHearingSheet({
         `/hearings/${hearing.id}/complete`,
         body,
       ),
-    onSuccess: () => {
+    onSuccess: async () => {
       invalidateWork(qc);
+      if (order) {
+        // The outcome is saved; now file the order against this hearing. If it fails, the outcome stays saved and the
+        // order can be attached from the hearing page.
+        try {
+          setOrderProgress(0);
+          await uploadDocument(order, { matterId: hearing.matterId, hearingId: hearing.id, category: 'orders' }, setOrderProgress, new AbortController().signal);
+          void qc.invalidateQueries({ queryKey: ['documents'] });
+        } catch (err) {
+          setOrderProgress(null);
+          setOrderError(`The outcome is saved, but the order didn’t upload (${err instanceof Error ? err.message : 'error'}). Attach it from the hearing page.`);
+          return;
+        }
+      }
       onClose();
     },
     onError: (err) => {
@@ -96,9 +119,15 @@ export function CompleteHearingSheet({
       onClose={onClose}
       title="Record outcome"
       footer={
-        <Button block onClick={submit} loading={save.isPending}>
-          Save outcome
-        </Button>
+        orderError ? (
+          <Button block variant="secondary" onClick={onClose}>
+            Close
+          </Button>
+        ) : (
+          <Button block onClick={submit} loading={save.isPending || orderProgress !== null}>
+            {orderProgress !== null ? `Uploading order… ${Math.round(orderProgress * 100)}%` : 'Save outcome'}
+          </Button>
+        )
       }
     >
       <div className="space-y-4">
@@ -106,6 +135,7 @@ export function CompleteHearingSheet({
           {hearing.caseNumber ?? hearing.caseTitle} · {formatDate(hearing.scheduledDate)}
         </p>
         {generalError ? <Alert tone="danger">{generalError}</Alert> : null}
+        {orderError ? <Alert tone="warning">{orderError}</Alert> : null}
         {errors.result ? <Alert tone="danger">{errors.result}</Alert> : null}
 
         <div role="radiogroup" aria-label="What happened" className="grid grid-cols-2 gap-2">
@@ -170,6 +200,28 @@ export function CompleteHearingSheet({
             onChange={(e) => setNextTime(e.target.value)}
           />
         </div>
+
+        {canAttach ? (
+          <div className="text-sm">
+            <label htmlFor="outcome-order" className="mb-1 block font-medium">
+              Attach the order <span className="font-normal text-muted">(optional)</span>
+            </label>
+            <input
+              id="outcome-order"
+              type="file"
+              accept={Object.keys(DOCUMENT_TYPES).map((e) => `.${e}`).join(',')}
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                const problem = !f ? '' : !(documentExtension(f.name) in DOCUMENT_TYPES) ? 'This file type isn’t allowed' : f.size > MAX_DOCUMENT_BYTES ? 'Files can be up to 500 MB' : '';
+                setErrors((x) => ({ ...x, order: problem }));
+                setOrder(problem ? null : f);
+              }}
+              className="block w-full text-sm file:mr-3 file:rounded-lg file:border file:border-line file:bg-surface file:px-3 file:py-2"
+            />
+            {order ? <p className="mt-1 text-xs text-muted">{order.name} · {formatBytes(order.size)} · filed under Orders & judgments</p> : null}
+            {errors.order ? <p className="mt-1 text-xs text-danger-700">{errors.order}</p> : null}
+          </div>
+        ) : null}
 
         <fieldset className="space-y-3">
           <legend className="text-sm font-medium">Next actions</legend>

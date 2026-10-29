@@ -12,13 +12,16 @@ import type { Deps } from '../src/deps.js';
 import { NoopCourtProvider } from '../src/integrations/courts/noop-provider.js';
 import { DisabledEmailProvider } from '../src/modules/notifications/providers.js';
 import type { RateLimits } from '../src/modules/auth/auth.routes.js';
+import { FakeDocumentStorage } from './fake-storage.js';
 
 export const PASSWORD = 'correct-horse-battery';
 let passwordHash: Promise<string> | undefined;
 
 const env = loadEnv();
 export const pool = createPool(env.DATABASE_URL);
-export const deps: Deps = { pool, env, log: pino({ level: 'silent' }), courts: new NoopCourtProvider(), email: new DisabledEmailProvider() };
+/** Document storage for tests; `simulateBrowserUpload` stands in for the browser. Reset before each test. */
+export const storage = new FakeDocumentStorage();
+export const deps: Deps = { pool, env, log: pino({ level: 'silent' }), courts: new NoopCourtProvider(), email: new DisabledEmailProvider(), storage };
 
 const servers: Server[] = [];
 
@@ -41,6 +44,10 @@ let systemTemplates: Record<string, unknown>[] | undefined;
 /** Call at the top of each test file: clean tables between tests, close the pool at the end. */
 export function useDatabase(): void {
   beforeEach(async () => {
+    storage.uploads.clear();
+    storage.objects.clear();
+    storage.removed = [];
+    storage.lastUploadId = null;
     globalCourts ??= (await pool.query('SELECT * FROM courts WHERE organization_id IS NULL')).rows;
     systemTemplates ??= (await pool.query('SELECT * FROM email_templates WHERE organization_id IS NULL')).rows;
     const { rows } = await pool.query<{ tablename: string }>(

@@ -5,3 +5,4 @@ export * from './domain.js';
 export * from './dtos.js';
 export * from './workflows.js';
 export * from './platform.js';
+export * from './documents.js';

@@ -37,7 +37,8 @@ Prerequisites: Node 22+, pnpm 12, Docker.
 ```bash
 pnpm install
 cp .env.example .env
-pnpm dev:deps     # Postgres :5433, Redis :6380, MinIO :9000
+pnpm dev:deps     # Postgres :5433, Redis :6380, S3 (SeaweedFS) :9000
+pnpm dev:storage  # create the documents bucket and its CORS rule (once)
 pnpm db:reset     # drop + migrate + seed (dev only; refuses in production)
 pnpm dev:api      # http://localhost:4100
 pnpm dev:web      # http://localhost:5190 (proxies /api to the API)

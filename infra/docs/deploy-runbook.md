@@ -143,6 +143,57 @@ Caddy requests the HTTPS certificate on first start, and that only succeeds once
    sudo /opt/lexforgex/repo/infra/scripts/deploy.sh
    ```
 
+## Stage 10: Matter documents (S3 bucket)
+
+Uploaded case papers and orders are stored in a private S3 bucket. The browser uploads straight to S3 using short-lived signed links, so files never pass through the server. Until this stage is done, the app runs with document upload switched off: the Documents tab loads, and uploads fail with "Document storage isn’t set up on this server yet".
+
+Cost: S3 storage is about $0.025 per GB a month in Mumbai; 50 GB of papers is about $1.25 a month.
+
+1. **S3 → Create bucket** (region **ap-south-1**).
+   - Name: `lexforgex-prod-documents`. If the name is taken, choose another, and use the same name in steps 4 and 6.
+   - Object Ownership: **ACLs disabled**. **Block all public access: on** (all four boxes).
+   - Bucket Versioning: **Disable**. The app never overwrites a file, and deleting in the app is a soft delete.
+   - Default encryption: **SSE-S3**, Bucket Key enabled → **Create bucket**.
+2. Open the bucket → **Permissions → Cross-origin resource sharing (CORS) → Edit**, paste, **Save**:
+   ```json
+   [
+     {
+       "AllowedOrigins": ["https://app.lexforgex.com"],
+       "AllowedMethods": ["PUT", "GET"],
+       "AllowedHeaders": ["*"],
+       "ExposeHeaders": ["ETag"],
+       "MaxAgeSeconds": 3600
+     }
+   ]
+   ```
+   `ETag` must be exposed: the browser reads it from each uploaded part to finish the upload.
+3. **Management → Create lifecycle rule**: name `abort-incomplete-uploads`, scope **Apply to all objects** (tick the acknowledgement), action **Delete expired object delete markers or incomplete multipart uploads** → tick **Delete incomplete multipart uploads**, days `1` → **Create rule**. This clears parts left by uploads that were abandoned midway (closed tab, lost connection), which S3 otherwise bills for indefinitely.
+4. **Permissions → Bucket policy → Edit**: refuse any non-HTTPS access. Replace the bucket name if you changed it:
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [
+       {
+         "Sid": "HttpsOnly",
+         "Effect": "Deny",
+         "Principal": "*",
+         "Action": "s3:*",
+         "Resource": ["arn:aws:s3:::lexforgex-prod-documents", "arn:aws:s3:::lexforgex-prod-documents/*"],
+         "Condition": { "Bool": { "aws:SecureTransport": "false" } }
+       }
+     ]
+   }
+   ```
+5. **IAM → Roles → `lexforgex-app-role` → `lexforgex-app-access` → Edit → JSON**: paste the current `infra/iam/lexforgex-app-policy.json` (it adds the `MatterDocuments` statement) → **Save**. If you changed the bucket name, change it in the `MatterDocuments` resource too.
+6. **Parameter Store → Create parameter**: `/lexforgex/prod/S3_BUCKET`, String, value `lexforgex-prod-documents`.
+7. **Let the containers use the server's role.** The API runs inside Docker, which adds a network hop to the instance metadata service. **EC2 → Instances → `lexforgex-prod` → Actions → Instance settings → Modify instance metadata options**: keep IMDSv2 **Required** and set **Metadata response hop limit** to `2` → **Save**. If it already says 2, leave it.
+8. Redeploy (Session Manager):
+   ```bash
+   sudo /opt/lexforgex/repo/infra/scripts/deploy.sh
+   ```
+   The output ends with `documents: lexforgex-prod-documents`.
+9. Check: in the app, open a matter → **Documents → Upload**, add a PDF of more than 16 MB (it then uploads in several parts), wait for the tick, then click its name to view it. If the upload fails, the API log (`logs --tail 200 api`, see Day-to-day) names the cause: `AccessDenied` means step 5 or 6; `Could not load credentials` means step 7. If the browser console shows a CORS error, check step 2.
+
 ---
 
 ## Day-to-day

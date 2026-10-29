@@ -1,5 +1,7 @@
 import {
   CASE_STATUS_LABELS,
+  DOCUMENT_CATEGORY_LABELS,
+  type DocumentDto,
   HEARING_STATUS_LABELS,
   MATTER_STAFF_ROLE_LABELS,
   MATTER_STATUS_LABELS,
@@ -37,9 +39,14 @@ export function MatterHistoryPrintPage() {
     queryKey: ['hearings', 'matter', matterId, 'all'],
     queryFn: () => api.get<HearingDto[]>(`/hearings${qs({ matterId })}`),
   });
+  const docs = useQuery({
+    queryKey: ['documents', 'matter', matterId, 'print'],
+    queryFn: () => api.get<DocumentDto[]>(`/documents${qs({ matterId })}`),
+    retry: false, // users without documents.view get a 403: just leave the section out
+  });
   const timeline = useQuery({ queryKey: ['matter', matterId, 'timeline', 'all'], queryFn: () => fetchAllTimeline(matterId) });
 
-  const ready = !matter.isPending && !hearings.isPending && !timeline.isPending;
+  const ready = !matter.isPending && !hearings.isPending && !timeline.isPending && !docs.isPending;
   const m = matter.data;
   const record = [...(hearings.data ?? [])].filter((h) => h.status !== 'scheduled' || h.pendingOutcome).sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
   const upcoming = (hearings.data ?? []).filter((h) => h.status === 'scheduled' && !h.pendingOutcome).sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
@@ -117,6 +124,33 @@ export function MatterHistoryPrintPage() {
               </p>
             ) : null}
           </Section>
+
+          {docs.data ? (
+            <Section title={`Documents (${docs.data.length})`}>
+              {docs.data.length === 0 ? (
+                <p className="text-gray-600">No documents uploaded.</p>
+              ) : (
+                <table className="w-full border-collapse text-[11px]">
+                  <thead>
+                    <Row head cells={['Document', 'Category', 'Case / hearing', 'Uploaded']} />
+                  </thead>
+                  <tbody>
+                    {docs.data.map((d) => (
+                      <Row
+                        key={d.id}
+                        cells={[
+                          d.name,
+                          DOCUMENT_CATEGORY_LABELS[d.category],
+                          [d.caseNumber, d.hearingDate ? `hearing ${formatDate(d.hearingDate)}` : null].filter(Boolean).join(' · ') || '—',
+                          `${d.uploadedAt ? formatDate(d.uploadedAt.slice(0, 10)) : '—'}${d.uploadedBy ? ` · ${fullName(d.uploadedBy)}` : ''}`,
+                        ]}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </Section>
+          ) : null}
 
           <Section title={`Activity (${events.length})`}>
             {events.length === 0 ? (

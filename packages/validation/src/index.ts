@@ -9,3 +9,4 @@ export * from './money.js';
 export * from './billing.js';
 export * from './automation.js';
 export * from './platform.js';
+export * from './documents.js';

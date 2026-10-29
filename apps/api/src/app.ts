@@ -22,6 +22,7 @@ import { casesRouter } from './modules/cases/cases.routes.js';
 import { clientsRouter } from './modules/clients/clients.routes.js';
 import { courtsRouter } from './modules/courts/courts.routes.js';
 import { dashboardRouter } from './modules/dashboard/dashboard.routes.js';
+import { documentsRouter } from './modules/documents/documents.routes.js';
 import { hearingsRouter } from './modules/hearings/hearings.routes.js';
 import { mattersRouter } from './modules/matters/matters.routes.js';
 import { searchRouter } from './modules/search/search.routes.js';
@@ -96,6 +97,7 @@ export function createApp(deps: Deps, opts: { rateLimits?: Partial<RateLimits> }
   api.use('/email-templates', templatesRouter(deps));
   api.use('/workflows', workflowsRouter(deps));
   api.use('/calendar-feed', calendarFeedRouter(deps));
+  api.use('/documents', documentsRouter(deps));
   api.use('/ical', icalRouter(deps));
   if (deps.env.NODE_ENV !== 'production') api.use('/dev', devRouter(deps));
   // Platform realm (LexForgeX team): own cookie, session, CSRF and MFA; never runs firm middleware.

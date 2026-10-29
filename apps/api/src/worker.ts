@@ -5,6 +5,7 @@ import { createPool } from './db/pool.js';
 import type { Deps } from './deps.js';
 import { NoopCourtProvider } from './integrations/courts/noop-provider.js';
 import { failInterruptedSends } from './modules/notifications/notifications.service.js';
+import { createDocumentStorage } from './integrations/storage/s3-storage.js';
 import { createEmailProvider } from './modules/notifications/providers.js';
 import { requeueStuckActions } from './modules/workflows/engine.js';
 import { processOutbox, runDueActions, sendDueNotifications } from './modules/workflows/processor.js';
@@ -17,7 +18,7 @@ import { processOutbox, runDueActions, sendDueNotifications } from './modules/wo
 const env = loadEnv();
 const log = pino({ level: env.LOG_LEVEL }).child({ proc: 'worker' });
 const pool = createPool(env.DATABASE_URL);
-const deps: Deps = { pool, env, log, courts: new NoopCourtProvider(), email: createEmailProvider(env) };
+const deps: Deps = { pool, env, log, courts: new NoopCourtProvider(), email: createEmailProvider(env), storage: createDocumentStorage(env) };
 const workerId = `${hostname()}:${process.pid}`;
 
 let stopping = false;

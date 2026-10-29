@@ -62,6 +62,7 @@ import { CasePicker, HearingFormSheet } from '../hearings/HearingFormSheet.js';
 import { HearingRow } from '../hearings/HearingRow.js';
 import { TaskFormSheet } from '../tasks/TaskFormSheet.js';
 import { TaskRow } from '../tasks/TaskRow.js';
+import { MatterDocumentsTab } from '../documents/MatterDocumentsTab.js';
 
 const TABS = [
   { key: 'overview', label: 'Overview' },
@@ -85,6 +86,7 @@ export function MatterDetailPage() {
   const [managingTeam, setManagingTeam] = useState(false);
   const [addingHearing, setAddingHearing] = useState(false);
   const [addingTask, setAddingTask] = useState(false);
+  const [uploadingDocs, setUploadingDocs] = useState(false);
 
   const matter = useQuery({
     queryKey: ['matter', matterId],
@@ -150,7 +152,16 @@ export function MatterDetailPage() {
         {canAct(me, 'tasks.manage') ? (
           <QuickAction icon={<CheckSquare />} label="Add task" onClick={() => setAddingTask(true)} />
         ) : null}
-        <QuickAction icon={<FileText />} label="Add document" soon />
+        {canAct(me, 'documents.upload') ? (
+          <QuickAction
+            icon={<FileText />}
+            label="Add documents"
+            onClick={() => {
+              setParams({ tab: 'documents' }, { replace: true });
+              setUploadingDocs(true);
+            }}
+          />
+        ) : null}
         {canAct(me, 'invoices.manage') ? (
           <QuickAction
             icon={<Banknote />}
@@ -317,13 +328,7 @@ export function MatterDetailPage() {
           onAdd={canAct(me, 'tasks.manage') ? () => setAddingTask(true) : undefined}
         />
       ) : (
-        <Card>
-          <EmptyState
-            title={`${TABS.find((t) => t.key === tab)!.label} arrive in ${PHASE[tab as keyof typeof PHASE]}`}
-            description="This matter’s data is already linked and will appear here automatically."
-            className="py-12"
-          />
-        </Card>
+        <MatterDocumentsTab matter={m} uploading={uploadingDocs} setUploading={setUploadingDocs} />
       )}
 
       {canEdit ? <EditMatterSheet open={editing} onClose={() => setEditing(false)} matter={m} /> : null}
@@ -341,10 +346,6 @@ export function MatterDetailPage() {
     </div>
   );
 }
-
-const PHASE: Record<Exclude<TabKey, 'overview' | 'timeline' | 'hearings' | 'tasks' | 'billing' | 'communication'>, string> = {
-  documents: 'Phase 6',
-};
 
 function QuickAction({
   icon,

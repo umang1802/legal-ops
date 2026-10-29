@@ -54,6 +54,8 @@ APP_DOMAIN=$(require APP_DOMAIN)
 EMAIL_PROVIDER=$(get EMAIL_PROVIDER); EMAIL_PROVIDER=${EMAIL_PROVIDER:-disabled}
 EMAIL_FROM=$(get EMAIL_FROM); EMAIL_FROM=${EMAIL_FROM:-LexForgeX <notifications@lexforgex.com>}
 SES_CONFIGURATION_SET=$(get SES_CONFIGURATION_SET)
+# Matter documents bucket (runbook Stage 10). Unset: the app runs with document upload switched off.
+S3_BUCKET=$(get S3_BUCKET)
 ACME_EMAIL=$(get ACME_EMAIL); ACME_EMAIL=${ACME_EMAIL:-hello@lexforgex.com}
 SESSION_SECRET=$(ensure_secret SESSION_SECRET)
 PLATFORM_SECRET_KEY=$(ensure_secret PLATFORM_SECRET_KEY)
@@ -77,6 +79,7 @@ EMAIL_FROM=$EMAIL_FROM
 AWS_REGION=$REGION
 ENV
 [ -n "$SES_CONFIGURATION_SET" ] && echo "SES_CONFIGURATION_SET=$SES_CONFIGURATION_SET" >> "$tmp"
+[ -n "$S3_BUCKET" ] && echo "S3_BUCKET=$S3_BUCKET" >> "$tmp"
 mv "$tmp" "$OUT"
 chmod 600 "$OUT"
 
@@ -89,4 +92,4 @@ POSTGRES_DB=$DB_NAME
 ENV
 mv "$tmp" "$DB_OUT"
 chmod 600 "$DB_OUT"
-echo "wrote $OUT (email: $EMAIL_PROVIDER, domain: $APP_DOMAIN)"
+echo "wrote $OUT (email: $EMAIL_PROVIDER, domain: $APP_DOMAIN, documents: ${S3_BUCKET:-off})"
