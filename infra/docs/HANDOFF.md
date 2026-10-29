@@ -86,7 +86,8 @@ AWS resources were created through the console, using the runbook names. Status 
 3. **Firm invites and password resets don't work until email is on** (see section 5). Decide whether to build the invite-link command as a stopgap. The first invited firm's invitation is in the failed state; resend it once email works, or issue a link by hand.
    **Stage 9, email**: blocked on section 4 below (bounce and complaint handling, alarms, email footer) and SES production access. Keep `EMAIL_PROVIDER=disabled`.
 4. **Cleanup:** delete the unused `lexforgex-db-sg`; confirm no RDS snapshots remain; consider a billing alert at $60 if not already set.
-5. **Housekeeping noticed during the rollout:** the GoDaddy bare-domain forward still goes to `http://` (should be `https://`); product name in the platform UI still says "LexForgeX" (Track 7).
+5. **Matter documents (S3), new 29 Oct 2026.** Vidhimeya's bulk document upload needs a private S3 bucket: runbook **Stage 10** (bucket with CORS, a lifecycle rule and an HTTPS-only policy; IAM policy update; SSM `S3_BUCKET`; IMDS hop limit 2 so the API container can use the instance role; redeploy). Billable but small (about $0.025 per GB a month). Until it's done the app runs with uploads switched off. Code is on branch `feature/documents`.
+6. **Housekeeping noticed during the rollout:** the GoDaddy bare-domain forward still goes to `http://` (should be `https://`); product name in the platform UI still says "LexForgeX" (Track 7).
 
 ---
 

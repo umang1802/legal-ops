@@ -11,6 +11,7 @@ import { hearingTone } from '../../lib/status.js';
 import { NotFound } from '../common/NotFound.js';
 import { TaskFormSheet } from '../tasks/TaskFormSheet.js';
 import { TaskRow } from '../tasks/TaskRow.js';
+import { HearingDocumentsCard } from '../documents/HearingDocumentsCard.js';
 import { CancelHearingSheet, CompleteHearingSheet } from './CompleteHearingSheet.js';
 import { HearingFormSheet } from './HearingFormSheet.js';
 
@@ -168,6 +169,7 @@ export function HearingDetailPage() {
               />
             )}
           </Card>
+          <HearingDocumentsCard hearing={h} />
         </div>
         <Card className="h-fit">
           <CardHeader title="Details" />

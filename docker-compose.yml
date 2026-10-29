@@ -17,14 +17,14 @@ services:
     image: redis:7-alpine
     ports: ['6380:6379']
 
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: legalops
-      MINIO_ROOT_PASSWORD: legalops-dev-secret
-    ports: ['9000:9000', '9001:9001']
-    volumes: [miniodata:/data]
+  # Local S3-compatible document store (the minio/minio image is no longer published publicly). S3 API on :9000.
+  # Unauthenticated: dev only. Buckets are created on first use by `pnpm dev:storage`.
+  s3:
+    image: chrislusf/seaweedfs:latest
+    # Dev-only keys (same as .env.example). With an identity configured, unsigned requests are refused, as on AWS.
+    command: server -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json -dir=/data
+    ports: ['9000:8333']
+    volumes: [s3data:/data, ./infra/dev/seaweedfs-s3.json:/etc/seaweedfs/s3.json:ro]
 
   # Local mail catcher: the app really sends over SMTP; read every email at http://localhost:8025
   mailpit:
@@ -33,4 +33,4 @@ services:
 
 volumes:
   pgdata:
-  miniodata:
+  s3data:

@@ -12,10 +12,13 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "seed:demo": "tsx --env-file=../../.env src/scripts/seed-demo.ts",
-    "platform:create-admin": "tsx --env-file=../../.env src/scripts/create-platform-admin.ts"
+    "platform:create-admin": "tsx --env-file=../../.env src/scripts/create-platform-admin.ts",
+    "dev:storage": "tsx --env-file=../../.env src/scripts/dev-storage.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1158.0",
     "@aws-sdk/client-sesv2": "^3.1145.0",
+    "@aws-sdk/s3-request-presigner": "^3.1158.0",
     "@legalops/types": "workspace:*",
     "@legalops/validation": "workspace:*",
     "@node-rs/argon2": "^2.2.1",

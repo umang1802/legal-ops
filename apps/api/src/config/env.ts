@@ -29,6 +29,17 @@ const envSchema = z.object({
   SMTP_URL: z.string().default('smtp://localhost:1025'),
   AWS_REGION: z.string().default('ap-south-1'),
   SES_CONFIGURATION_SET: z.string().optional(),
+  // Document storage (S3). S3_BUCKET unset: uploads explain that storage isn't set up. In production the EC2 instance role
+  // supplies credentials; S3_ENDPOINT, path style and S3_ACCESS_KEY_ID/S3_SECRET_ACCESS_KEY are for a local S3-compatible store (SeaweedFS) in development.
+  S3_BUCKET: z.preprocess((v) => (v === '' ? undefined : v), z.string().min(3).optional()),
+  S3_REGION: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+  S3_ENDPOINT: z.preprocess((v) => (v === '' ? undefined : v), z.url().optional()),
+  S3_ACCESS_KEY_ID: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+  S3_SECRET_ACCESS_KEY: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+  S3_FORCE_PATH_STYLE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
   REDIS_URL: z.string().default('redis://localhost:6380'),
   WORKER_POLL_MS: z.coerce.number().int().positive().default(1000),
   SCHEDULER_POLL_MS: z.coerce.number().int().positive().default(15000),

@@ -3,12 +3,13 @@ import { createApp } from './app.js';
 import { loadEnv } from './config/env.js';
 import { createPool } from './db/pool.js';
 import { NoopCourtProvider } from './integrations/courts/noop-provider.js';
+import { createDocumentStorage } from './integrations/storage/s3-storage.js';
 import { createEmailProvider } from './modules/notifications/providers.js';
 
 const env = loadEnv();
 const log = pino({ level: env.LOG_LEVEL });
 const pool = createPool(env.DATABASE_URL);
-const app = createApp({ pool, env, log, courts: new NoopCourtProvider(), email: createEmailProvider(env) });
+const app = createApp({ pool, env, log, courts: new NoopCourtProvider(), email: createEmailProvider(env), storage: createDocumentStorage(env) });
 
 const server = app.listen(env.PORT, () => log.info({ port: env.PORT }, 'LexForgeX API listening'));
 

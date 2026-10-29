@@ -15,6 +15,7 @@ import { sql } from '../db/sql.js';
 import type { Deps } from '../deps.js';
 import type { RequestMeta, TenantContext } from '../http/context.js';
 import { NoopCourtProvider } from '../integrations/courts/noop-provider.js';
+import { DisabledDocumentStorage } from '../integrations/storage/s3-storage.js';
 import { DisabledEmailProvider } from '../modules/notifications/providers.js';
 import { createExpense } from '../modules/billing/expenses.service.js';
 import { createFeeAgreement } from '../modules/billing/fee-agreements.service.js';
@@ -24,7 +25,7 @@ import { recordPayment } from '../modules/billing/payments.service.js';
 const env = loadEnv();
 if (env.NODE_ENV === 'production') throw new Error('Refusing to seed demo data in production');
 const pool = createPool(env.DATABASE_URL);
-const deps: Deps = { pool, env, log: pino({ level: 'silent' }), courts: new NoopCourtProvider(), email: new DisabledEmailProvider() };
+const deps: Deps = { pool, env, log: pino({ level: 'silent' }), courts: new NoopCourtProvider(), email: new DisabledEmailProvider(), storage: new DisabledDocumentStorage() };
 const meta: RequestMeta = { requestId: 'seed-demo', ip: null, userAgent: 'seed' };
 
 try {

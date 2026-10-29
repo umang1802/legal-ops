@@ -20,7 +20,8 @@
     "lint": "eslint .",
     "test": "pnpm -r test",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "dev:storage": "pnpm --filter @legalops/api dev:storage"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
