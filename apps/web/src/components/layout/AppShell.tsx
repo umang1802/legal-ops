@@ -4,6 +4,8 @@ import { Banknote, Briefcase, CheckSquare, Home, LogOut, Menu, Plus, Scale, Sear
 import { Suspense, useState } from 'react';
 import { NavLink, Outlet, ScrollRestoration, useNavigate } from 'react-router';
 import { canAct, useLogout, useSession } from '../../lib/auth.js';
+import { FirmLogo } from '../branding/FirmLogo.js';
+import { PoweredBy } from '../branding/PoweredBy.js';
 import { initials } from '../../lib/format.js';
 import { OrgSwitcher } from './OrgSwitcher.js';
 import { navVisible, SETTINGS_NAV, SIDEBAR, type NavItem } from './nav.js';
@@ -73,8 +75,14 @@ export function AppShell() {
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-line bg-surface lg:flex">
         <div className="flex h-16 items-center gap-2 px-5">
-          <Scale className="size-6 text-brand-700" aria-hidden />
-          <span className="text-lg font-semibold tracking-tight">LexForgeX</span>
+          {me.organization.logoUrl ? (
+            <FirmLogo name={me.organization.name} logoUrl={me.organization.logoUrl} className="max-h-10 max-w-full" />
+          ) : (
+            <>
+              <Scale className="size-6 text-brand-700" aria-hidden />
+              <span className="text-lg font-semibold tracking-tight">LexForgeX</span>
+            </>
+          )}
         </div>
         <div className="space-y-3 px-3">
           <OrgSwitcher />
@@ -99,6 +107,7 @@ export function AppShell() {
             <SidebarLink key={item.to} item={item} />
           ))}
         </nav>
+        <PoweredBy className="px-5 pb-2" />
         <div className="flex items-center gap-3 border-t border-line p-3">
           <div className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-800">
             {initials(me.user.firstName, me.user.lastName)}
@@ -124,7 +133,11 @@ export function AppShell() {
         <SuspendedBanner />
         {/* Mobile top bar */}
         <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-line bg-surface/95 px-4 backdrop-blur lg:hidden">
-          <Scale className="size-5 text-brand-700" aria-hidden />
+          {me.organization.logoUrl ? (
+            <FirmLogo name={me.organization.name} logoUrl={me.organization.logoUrl} className="h-7 max-w-24" />
+          ) : (
+            <Scale className="size-5 text-brand-700" aria-hidden />
+          )}
           <span className="min-w-0 flex-1 truncate font-semibold">{me.organization.name}</span>
           <NavLink
             to="/search"

@@ -10,6 +10,7 @@ import { useParams } from 'react-router';
 import { api } from '../../lib/api.js';
 import { formatDate } from '../../lib/format.js';
 import { formatINR, isZero } from '../../lib/money.js';
+import { FirmLogo } from '../../components/branding/FirmLogo.js';
 import { PrintShell } from '../../components/print/PrintShell.js';
 
 function FirmHeader({
@@ -24,6 +25,7 @@ function FirmHeader({
   return (
     <header className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-300 pb-4">
       <div>
+        <FirmLogo name={org.legalName ?? org.name} logoUrl={org.logoUrl} className="mb-2 max-h-14 max-w-56" />
         <p className="text-lg font-semibold">{org.legalName ?? org.name}</p>
         <p className="text-xs text-gray-600">
           {[org.address, org.city, org.state, org.pincode].filter(Boolean).join(', ')}
@@ -140,7 +142,7 @@ export function InvoicePrintPage() {
             </p>
           ) : null}
           {i.notes ? <p className="mt-4 text-xs whitespace-pre-wrap">{i.notes}</p> : null}
-          <p className="mt-8 text-xs text-gray-500">This is a computer-generated invoice.</p>
+          <p className="mt-8 text-xs text-gray-500">This is a computer-generated invoice. Powered by LexForgeX.</p>
         </>
       ) : null}
     </PrintShell>
@@ -201,7 +203,7 @@ export function ReceiptPrintPage() {
           {!isZero(pay.unallocated) ? (
             <p className="mt-3 text-xs">Held as advance: {formatINR(pay.unallocated)}</p>
           ) : null}
-          <p className="mt-10 text-xs text-gray-500">This is a computer-generated receipt.</p>
+          <p className="mt-10 text-xs text-gray-500">This is a computer-generated receipt. Powered by LexForgeX.</p>
         </>
       ) : null}
     </PrintShell>

@@ -13,6 +13,15 @@ export interface DocumentStorage {
   objectSize(key: string): Promise<number | null>;
   remove(key: string): Promise<void>;
   signDownloadUrl(key: string, o: { fileName: string; contentType: string; inline: boolean; expiresInSeconds: number }): Promise<string>;
+  /**
+   * Signed URL for a single PUT (firm logo uploads). Only the host is signed: the URL doesn't pin Content-Type or size
+   * and can be reused until it expires, so only ever sign a staging key and check what arrives before using it.
+   */
+  signPutUrl(key: string, contentType: string, expiresInSeconds: number): Promise<string>;
+  /** Writes a small object from the API itself (a checked firm logo). */
+  putObject(key: string, body: Buffer, contentType: string): Promise<void>;
+  /** The object's bytes, at most maxBytes + 1 of them (so callers can spot an oversize file), or null if there's none. */
+  readObject(key: string, maxBytes: number): Promise<Buffer | null>;
 }
 
 /** RFC 6266 Content-Disposition with an ASCII fallback and the full UTF-8 name. */

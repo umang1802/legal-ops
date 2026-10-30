@@ -46,6 +46,7 @@ export function useDatabase(): void {
   beforeEach(async () => {
     storage.uploads.clear();
     storage.objects.clear();
+    storage.data.clear();
     storage.removed = [];
     storage.lastUploadId = null;
     globalCourts ??= (await pool.query('SELECT * FROM courts WHERE organization_id IS NULL')).rows;

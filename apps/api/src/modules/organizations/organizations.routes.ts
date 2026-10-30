@@ -1,5 +1,7 @@
 import {
+  completeLogoUploadSchema,
   inviteMemberSchema,
+  startLogoUploadSchema,
   updateMemberSchema,
   updateOrganizationSchema,
   uuidSchema,
@@ -9,6 +11,7 @@ import type { Deps } from '../../deps.js';
 import { parse } from '../../http/validate.js';
 import { requestMeta } from '../../middleware/request-context.js';
 import { requireAuth, requirePermission, tenant } from '../../middleware/security.js';
+import * as logo from './logo.service.js';
 import * as orgs from './organizations.service.js';
 
 export function organizationRouter(deps: Deps): Router {
@@ -22,6 +25,18 @@ export function organizationRouter(deps: Deps): Router {
   r.patch('/', requirePermission('organization.manage'), async (req, res) => {
     const input = parse(updateOrganizationSchema, req.body);
     res.json({ data: await orgs.updateOrganization(deps, tenant(req), input, requestMeta(req)) });
+  });
+
+  r.post('/logo/uploads', requirePermission('organization.manage'), async (req, res) => {
+    const input = parse(startLogoUploadSchema, req.body);
+    res.status(201).set('Cache-Control', 'no-store').json({ data: await logo.startLogoUpload(deps, tenant(req), input) });
+  });
+  r.post('/logo/:logoId/complete', requirePermission('organization.manage'), async (req, res) => {
+    parse(completeLogoUploadSchema, req.body ?? {});
+    res.json({ data: await logo.completeLogoUpload(deps, tenant(req), parse(uuidSchema, req.params.logoId), requestMeta(req)) });
+  });
+  r.delete('/logo', requirePermission('organization.manage'), async (req, res) => {
+    res.json({ data: await logo.removeLogo(deps, tenant(req), requestMeta(req)) });
   });
 
   // Any member can list colleagues (needed for assignee pickers); management is gated below.

@@ -5,7 +5,9 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  NoSuchKey,
   NotFound,
+  PutObjectCommand,
   S3Client,
   UploadPartCommand,
 } from '@aws-sdk/client-s3';
@@ -98,6 +100,24 @@ export class S3DocumentStorage implements DocumentStorage {
       { expiresIn: o.expiresInSeconds },
     );
   }
+
+  signPutUrl(key: string, contentType: string, expiresInSeconds: number) {
+    return getSignedUrl(this.s3, new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: contentType }), { expiresIn: expiresInSeconds });
+  }
+
+  async putObject(key: string, body: Buffer, contentType: string) {
+    await this.s3.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: contentType }));
+  }
+
+  async readObject(key: string, maxBytes: number) {
+    try {
+      const r = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket, Key: key, Range: `bytes=0-${maxBytes}` }));
+      return r.Body ? Buffer.from(await r.Body.transformToByteArray()) : null;
+    } catch (err) {
+      if (err instanceof NoSuchKey || (err as { name?: string }).name === 'NoSuchKey') return null;
+      throw err;
+    }
+  }
 }
 
 /** Used when DOCUMENTS_BUCKET isn't set: every operation explains that document storage isn't set up. */
@@ -116,6 +136,15 @@ export class DisabledDocumentStorage implements DocumentStorage {
     return this.fail();
   }
   abortUpload(): never {
+    return this.fail();
+  }
+  signPutUrl(): never {
+    return this.fail();
+  }
+  putObject(): never {
+    return this.fail();
+  }
+  readObject(): never {
     return this.fail();
   }
   objectSize(): never {

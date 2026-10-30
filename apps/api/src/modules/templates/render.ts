@@ -62,13 +62,17 @@ export function htmlToText(html: string): string {
 }
 
 /** Minimal, client-safe email layout (inline styles only). */
-export function emailLayout(bodyHtml: string, firm: { name: string; email: string | null; phone: string | null }): string {
+export function emailLayout(bodyHtml: string, firm: { name: string; email: string | null; phone: string | null; logoUrl: string | null }): string {
   const contact = [firm.email, firm.phone].filter(Boolean).map((s) => escapeHtml(s!)).join(' · ');
   return `<!doctype html><html><body style="margin:0;background:#f6f7f9;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111827">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid #e3e6eb;border-radius:12px">
-<tr><td style="padding:20px 24px;border-bottom:1px solid #e3e6eb;font-weight:600;font-size:16px;color:#1e3a8a">${escapeHtml(firm.name)}</td></tr>
+<tr><td style="padding:20px 24px;border-bottom:1px solid #e3e6eb;font-weight:600;font-size:16px;color:#1e3a8a">${
+    firm.logoUrl
+      ? `<img src="${escapeHtml(firm.logoUrl)}" alt="${escapeHtml(firm.name)}" height="40" style="display:block;height:40px;max-width:200px;width:auto;border:0">`
+      : escapeHtml(firm.name)
+  }</td></tr>
 <tr><td style="padding:20px 24px;font-size:15px;line-height:1.55">${bodyHtml}</td></tr>
-<tr><td style="padding:16px 24px;border-top:1px solid #e3e6eb;font-size:12px;color:#6b7280">${escapeHtml(firm.name)}${contact ? ` · ${contact}` : ''}<br>Sent via LexForgeX</td></tr>
+<tr><td style="padding:16px 24px;border-top:1px solid #e3e6eb;font-size:12px;color:#6b7280">${escapeHtml(firm.name)}${contact ? ` · ${contact}` : ''}<br>Powered by LexForgeX</td></tr>
 </table></td></tr></table></body></html>`;
 }

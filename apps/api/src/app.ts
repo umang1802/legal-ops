@@ -33,6 +33,7 @@ import { notificationsRouter } from './modules/notifications/notifications.route
 import { templatesRouter } from './modules/templates/templates.routes.js';
 import { workflowsRouter } from './modules/workflows/workflows.routes.js';
 import { organizationRouter } from './modules/organizations/organizations.routes.js';
+import { publicLogoRouter } from './modules/organizations/public-logo.routes.js';
 import { platformRouter } from './modules/platform/platform.routes.js';
 
 const DEFAULT_LIMITS: RateLimits = { loginPerWindow: 10, resetPerWindow: 5, windowMs: 15 * 60_000 };
@@ -102,6 +103,8 @@ export function createApp(deps: Deps, opts: { rateLimits?: Partial<RateLimits> }
   if (deps.env.NODE_ENV !== 'production') api.use('/dev', devRouter(deps));
   // Platform realm (LexForgeX team): own cookie, session, CSRF and MFA; never runs firm middleware.
   app.use('/api/v1/platform', platformRouter(deps, { ...DEFAULT_LIMITS, ...opts.rateLimits }));
+  // Firm logos for email apps and printouts: public, before the firm router so no session or CSRF applies.
+  app.use('/api/v1/public', publicLogoRouter(deps));
   app.use('/api/v1', api);
 
   app.use(notFoundHandler);
