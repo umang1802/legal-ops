@@ -1,3 +1,4 @@
+import { LOGO_TYPES, type LogoContentType, MAX_LOGO_BYTES } from '@legalops/types';
 import { z } from 'zod';
 import { emailSchema, gstinSchema, panSchema, pincodeSchema, stateCodeSchema } from './common.js';
 
@@ -49,3 +50,13 @@ export const updateMemberSchema = z
   .strict()
   .refine((v) => v.role !== undefined || v.status !== undefined, { error: 'Nothing to update' });
 export type UpdateMemberInput = z.input<typeof updateMemberSchema>;
+
+const LOGO_CONTENT_TYPES = Object.keys(LOGO_TYPES) as [LogoContentType, ...LogoContentType[]];
+export const startLogoUploadSchema = z
+  .object({
+    contentType: z.enum(LOGO_CONTENT_TYPES, { error: 'That file isn’t a PNG or JPG' }),
+    sizeBytes: z.number().int().min(1).max(MAX_LOGO_BYTES, { error: 'Logos can be up to 1 MB' }),
+  })
+  .strict();
+/** The server reads the file's real type from its bytes, so completing needs nothing from the browser. */
+export const completeLogoUploadSchema = z.object({}).strict();

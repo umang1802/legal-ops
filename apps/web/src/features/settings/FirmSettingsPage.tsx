@@ -18,6 +18,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { api, ApiError, applyFieldErrors } from '../../lib/api.js';
 import { hasFeature, ME_KEY, useSession } from '../../lib/auth.js';
+import { LogoCard } from './LogoCard.js';
 
 // Form works on strings; empty string = "clear this field" (sent as null).
 const formSchema = z.object({
@@ -100,8 +101,9 @@ export function FirmSettingsPage() {
     onError: (err) => applyFieldErrors(err, form.setError),
   });
 
+  // Keep unsaved edits when the organization changes underneath the form (e.g. the Logo card saved a new logo).
   useEffect(() => {
-    if (org.data) form.reset(toForm(org.data));
+    if (org.data) form.reset(toForm(org.data), { keepDirtyValues: true });
   }, [org.data, form]);
 
   const taxMode = form.watch('taxMode');
@@ -128,6 +130,8 @@ export function FirmSettingsPage() {
       {save.error && !(save.error instanceof ApiError && save.error.details.length) ? (
         <Alert tone="danger">{save.error instanceof ApiError ? save.error.message : 'Could not save.'}</Alert>
       ) : null}
+
+      <LogoCard org={org.data} />
 
       <Card>
         <CardHeader title="Firm profile" />

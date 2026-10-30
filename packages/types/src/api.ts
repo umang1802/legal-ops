@@ -38,7 +38,16 @@ export type MembershipSummary = {
 
 export type MeResponse = {
   user: { id: string; email: string; firstName: string; lastName: string | null; emailVerified: boolean };
-  organization: { id: string; name: string; timezone: string; currency: string; taxMode: 'simple' | 'gst'; status: OrganizationStatus };
+  organization: {
+    id: string;
+    name: string;
+    timezone: string;
+    currency: string;
+    taxMode: 'simple' | 'gst';
+    status: OrganizationStatus;
+    /** Public path of the firm's logo, or null when it has none. */
+    logoUrl: string | null;
+  };
   role: Role;
   permissions: readonly Permission[];
   /** Switchable features that are on for this firm (see FEATURES). */
@@ -61,6 +70,8 @@ export type MemberDto = {
 export type OrganizationDto = {
   id: string;
   name: string;
+  /** Public path of the firm's logo, or null when it has none. */
+  logoUrl: string | null;
   legalName: string | null;
   email: string | null;
   phone: string | null;

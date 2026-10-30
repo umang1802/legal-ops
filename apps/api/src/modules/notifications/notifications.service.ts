@@ -18,6 +18,7 @@ import { addTimelineEvent } from '../timeline/timeline.service.js';
 import { EmailChannel, type NotificationChannel } from './channels.js';
 import { buildContext, type ContextRefs } from './context.js';
 import { ProviderError } from './providers.js';
+import { firmBranding } from '../organizations/organizations.service.js';
 
 export const MAX_ATTEMPTS = 5;
 const SENSITIVE_PLACEHOLDER = '[link issued at send time, not stored]';
@@ -163,7 +164,7 @@ export async function sendNotification(deps: Deps & { channel?: NotificationChan
   );
   if (!n) return 'not_ready';
   const channel = deps.channel ?? new EmailChannel(deps.email);
-  const firm = (await queryOne<{ name: string; email: string | null; phone: string | null }>(db, sql`SELECT name, email, phone FROM organizations WHERE id = ${n.organization_id}`))!;
+  const firm = await firmBranding(db, n.organization_id, deps.env.APP_URL);
 
   try {
     let html = n.body_html;

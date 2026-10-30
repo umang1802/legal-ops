@@ -168,6 +168,7 @@ Cost: S3 storage is about $0.025 per GB a month in Mumbai; 50 GB of papers is ab
    ```
    `ETag` must be exposed: the browser reads it from each uploaded part to finish the upload.
 3. **Management → Create lifecycle rule**: name `abort-incomplete-uploads`, scope **Apply to all objects** (tick the acknowledgement), action **Delete expired object delete markers or incomplete multipart uploads** → tick **Delete incomplete multipart uploads**, days `1` → **Create rule**. This clears parts left by uploads that were abandoned midway (closed tab, lost connection), which S3 otherwise bills for indefinitely.
+   Then a second rule: **Create lifecycle rule** → name `expire-incoming`, scope **Limit the scope using filters** → prefix `incoming/`, action **Expire current versions of objects** → `1` day → **Create rule**. Firm logos are first uploaded to `incoming/` and copied into place once checked; this clears any upload that was never completed.
 4. **Permissions → Bucket policy → Edit**: refuse any non-HTTPS access. Replace the bucket name if you changed it:
    ```json
    {
@@ -184,7 +185,7 @@ Cost: S3 storage is about $0.025 per GB a month in Mumbai; 50 GB of papers is ab
      ]
    }
    ```
-5. **IAM → Roles → `lexforgex-app-role` → `lexforgex-app-access` → Edit → JSON**: paste the current `infra/iam/lexforgex-app-policy.json` (it adds the `MatterDocuments` statement) → **Save**. If you changed the bucket name, change it in the `MatterDocuments` resource too.
+5. **IAM → Roles → `lexforgex-app-role` → `lexforgex-app-access` → Edit → JSON**: paste the current `infra/iam/lexforgex-app-policy.json` (it adds the `MatterDocuments` and `MatterDocumentsNotFoundIs404` statements; without `s3:ListBucket`, S3 answers a missing file with "access denied" and the app returns errors instead of "not found") → **Save**. If you changed the bucket name, change it in the `MatterDocuments` resource too.
 6. **Parameter Store → Create parameter**: `/lexforgex/prod/S3_BUCKET`, String, value `lexforgex-prod-documents`.
 7. **Let the containers use the server's role.** The API runs inside Docker, which adds a network hop to the instance metadata service. **EC2 → Instances → `lexforgex-prod` → Actions → Instance settings → Modify instance metadata options**: keep IMDSv2 **Required** and set **Metadata response hop limit** to `2` → **Save**. If it already says 2, leave it.
 8. Redeploy (Session Manager):

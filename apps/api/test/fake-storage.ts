@@ -5,6 +5,8 @@ export class FakeDocumentStorage implements DocumentStorage {
   readonly name = 'fake';
   uploads = new Map<string, { key: string; contentType: string; parts: number; done: boolean; aborted: boolean }>();
   objects = new Map<string, number>();
+  /** Single-PUT objects (logos) with their bytes. */
+  data = new Map<string, Buffer>();
   removed: string[] = [];
   lastUploadId: string | null = null;
   private n = 0;
@@ -34,11 +36,26 @@ export class FakeDocumentStorage implements DocumentStorage {
     if (u) u.aborted = true;
   }
   async objectSize(key: string) {
-    return this.objects.get(key) ?? null;
+    return this.objects.get(key) ?? this.data.get(key)?.length ?? null;
   }
   async remove(key: string) {
     this.objects.delete(key);
+    this.data.delete(key);
     this.removed.push(key);
+  }
+  /** Stands in for the browser PUTting a file to a signed URL. */
+  putDirect(key: string, body: Buffer) {
+    this.data.set(key, body);
+  }
+  async putObject(key: string, body: Buffer) {
+    this.data.set(key, body);
+  }
+  async signPutUrl(key: string) {
+    return `https://fake-storage/put/${key}`;
+  }
+  async readObject(key: string, maxBytes: number) {
+    const b = this.data.get(key);
+    return b ? b.subarray(0, maxBytes + 1) : null;
   }
   async signDownloadUrl(key: string, o: { fileName: string; inline: boolean }) {
     return `https://fake-storage/${key}?download=1&inline=${o.inline}&name=${encodeURIComponent(o.fileName)}`;

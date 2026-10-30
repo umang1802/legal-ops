@@ -3,6 +3,7 @@ import { ChevronRight, LogOut } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import { OrgSwitcher } from '../../components/layout/OrgSwitcher.js';
 import { navVisible, SETTINGS_NAV, SIDEBAR } from '../../components/layout/nav.js';
+import { PoweredBy } from '../../components/branding/PoweredBy.js';
 import { useLogout, useSession } from '../../lib/auth.js';
 
 /** Mobile overflow menu: everything not in the bottom bar. */
@@ -42,6 +43,7 @@ export function MorePage() {
         </button>
       </Card>
       <p className="text-center text-xs text-muted">Signed in as {me.user.email}</p>
+      <PoweredBy className="justify-center pt-2" />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { MemberDto, OrganizationDto, Role } from '@legalops/types';
+import { logoPath, type LogoType, type MemberDto, type OrganizationDto, type Role } from '@legalops/types';
 import type { UpdateOrganizationInput } from '@legalops/validation';
 import { query, queryOne, withTransaction, type Db } from '../../db/pool.js';
 import { sql } from '../../db/sql.js';
@@ -11,6 +11,8 @@ import { emitEvent } from '../outbox/outbox.service.js';
 type OrgRow = {
   id: string;
   name: string;
+  logo_id: string | null;
+  logo_type: LogoType | null;
   legal_name: string | null;
   email: string | null;
   phone: string | null;
@@ -33,6 +35,7 @@ type OrgRow = {
 const toOrgDto = (o: OrgRow): OrganizationDto => ({
   id: o.id,
   name: o.name,
+  logoUrl: o.logo_id && o.logo_type ? logoPath(o.id, o.logo_id, o.logo_type) : null,
   legalName: o.legal_name,
   email: o.email,
   phone: o.phone,
@@ -75,12 +78,23 @@ const ORG_COLUMNS: Record<keyof UpdateOrganizationInput, string> = {
 async function loadOrg(db: Db, organizationId: string, lock = false): Promise<OrgRow> {
   const row = await queryOne<OrgRow>(
     db,
-    sql`SELECT id, name, legal_name, email, phone, address, city, state, pincode, state_code, timezone, currency, reminders_enabled, calendar_hide_parties,
+    sql`SELECT id, name, logo_id, logo_type, legal_name, email, phone, address, city, state, pincode, state_code, timezone, currency, reminders_enabled, calendar_hide_parties,
                invoice_prefix, tax_mode, gstin, pan, default_send_time::text
         FROM organizations WHERE id = ${organizationId} ${lock ? sql`FOR UPDATE` : sql.empty}`,
   );
   if (!row) throw notFound('Organization');
   return row;
+}
+
+/** What client emails show of the firm: name, contact line and the absolute URL of its logo (or null). */
+export async function firmBranding(
+  db: Db,
+  organizationId: string,
+  appUrl: string,
+): Promise<{ name: string; email: string | null; phone: string | null; logoUrl: string | null }> {
+  const o = await loadOrg(db, organizationId);
+  const path = toOrgDto(o).logoUrl;
+  return { name: o.name, email: o.email, phone: o.phone, logoUrl: path ? `${appUrl.replace(/\/$/, '')}${path}` : null };
 }
 
 export async function getOrganization(deps: Deps, ctx: TenantContext): Promise<OrganizationDto> {

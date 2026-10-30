@@ -1,4 +1,4 @@
-import { canWithFeatures, isRole, permissionsFor, type MeResponse, type OrganizationStatus, type Role } from '@legalops/types';
+import { canWithFeatures, isRole, logoPath, permissionsFor, type LogoType, type MeResponse, type OrganizationStatus, type Role } from '@legalops/types';
 import { query, queryOne, withTransaction, type Db } from '../../db/pool.js';
 import { sql } from '../../db/sql.js';
 import type { Deps } from '../../deps.js';
@@ -86,12 +86,14 @@ export async function getMe(deps: Deps, db: Db, sessionId: string): Promise<MeRe
     currency: string;
     tax_mode: 'simple' | 'gst';
     org_status: OrganizationStatus;
+    logo_id: string | null;
+    logo_type: LogoType | null;
     role: Role;
     csrf_secret: string;
   }>(
     db,
     sql`SELECT u.id AS user_id, u.email, u.first_name, u.last_name, u.email_verified_at,
-               o.id AS org_id, o.name AS org_name, o.timezone, o.currency, o.tax_mode, o.status AS org_status, m.role, s.csrf_secret
+               o.id AS org_id, o.name AS org_name, o.timezone, o.currency, o.tax_mode, o.status AS org_status, o.logo_id, o.logo_type, m.role, s.csrf_secret
         FROM sessions s
         JOIN users u ON u.id = s.user_id
         JOIN organizations o ON o.id = s.active_organization_id
@@ -122,6 +124,7 @@ export async function getMe(deps: Deps, db: Db, sessionId: string): Promise<MeRe
       currency: row.currency,
       taxMode: row.tax_mode,
       status: row.org_status,
+      logoUrl: row.logo_id && row.logo_type ? logoPath(row.org_id, row.logo_id, row.logo_type) : null,
     },
     role: row.role,
     permissions: permissionsFor(row.role).filter((p) => canWithFeatures(row.role, features, p)),

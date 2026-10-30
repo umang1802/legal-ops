@@ -7,3 +7,4 @@ export * from './workflows.js';
 export * from './platform.js';
 export * from './documents.js';
 export * from './features.js';
+export * from './branding.js';

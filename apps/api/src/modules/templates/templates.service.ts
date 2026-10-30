@@ -9,6 +9,7 @@ import { conflict, notFound, validationError } from '../../http/errors.js';
 import { iso } from '../../http/query-helpers.js';
 import { recordAudit } from '../audit/audit.service.js';
 import { buildContext } from '../notifications/context.js';
+import { firmBranding } from '../organizations/organizations.service.js';
 import { createNotification } from '../notifications/notifications.service.js';
 import { internalOnlyUsed, varsForAudience, type Audience } from './audience.js';
 import { emailLayout, htmlToText, renderTemplate, sanitizeTemplateHtml, unknownVariables } from './render.js';
@@ -157,7 +158,8 @@ export async function previewTemplate(deps: Deps, ctx: TenantContext, input: { a
     { ...examples, ...Object.fromEntries(Object.entries(ctxVars).map(([k, v]) => [k, { ...(examples[k] ?? {}), ...v }])) },
     input.audience ?? 'internal',
   );
-  const firm = (vars.firm ?? {}) as { name: string; email: string | null; phone: string | null };
+  const { logoUrl } = await firmBranding(deps.pool, ctx.organizationId, deps.env.APP_URL);
+  const firm = { ...((vars.firm ?? {}) as { name: string; email: string | null; phone: string | null }), logoUrl };
   const body = renderTemplate(sanitizeTemplateHtml(input.htmlBody), vars, 'html');
   return { subject: renderTemplate(input.subjectTemplate, vars, 'text'), html: emailLayout(body, firm), text: htmlToText(body) };
 }

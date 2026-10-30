@@ -23,6 +23,19 @@ describe('template rendering', () => {
 
   it('builds a plain-text alternative and an escaped layout', () => {
     expect(htmlToText('<p>Hello</p><p><a href="https://x.test/t">Open</a></p>')).toBe('Hello\nOpen (https://x.test/t)');
-    expect(emailLayout('<p>x</p>', { name: 'A & B', email: null, phone: null })).toContain('A &amp; B');
+    expect(emailLayout('<p>x</p>', { name: 'A & B', email: null, phone: null, logoUrl: null })).toContain('A &amp; B');
+  });
+
+  it('shows the firm’s logo in the header when it has one, and “Powered by LexForgeX” in the footer', () => {
+    const withLogo = emailLayout('<p>x</p>', { name: 'A & B', email: null, phone: null, logoUrl: 'https://app.test/api/v1/public/logos/o/l.png' });
+    expect(withLogo).toContain('<img src="https://app.test/api/v1/public/logos/o/l.png"');
+    expect(withLogo).toContain('alt="A &amp; B"');
+    const without = emailLayout('<p>x</p>', { name: 'A & B', email: null, phone: null, logoUrl: null });
+    expect(without).not.toContain('<img');
+    expect(without).toContain('A &amp; B');
+    for (const html of [withLogo, without]) {
+      expect(html).toContain('Powered by LexForgeX');
+      expect(html).not.toContain('Sent via LexForgeX');
+    }
   });
 });

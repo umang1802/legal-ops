@@ -3,6 +3,7 @@ import { Alert } from '@legalops/ui';
 import { useQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
+import { FirmLogo } from '../../components/branding/FirmLogo.js';
 import { PrintShell } from '../../components/print/PrintShell.js';
 import { api, qs } from '../../lib/api.js';
 import { useSession } from '../../lib/auth.js';
@@ -101,6 +102,7 @@ export function DiaryPrintPage() {
 
       <header className="flex flex-wrap items-end justify-between gap-2 border-b border-gray-400 pb-3">
         <div>
+          <FirmLogo name={me.organization.name} logoUrl={me.organization.logoUrl} className="mb-1 max-h-10 max-w-48" />
           <p className="text-base font-semibold">{me.organization.name}</p>
           <h1 className="text-xl font-semibold">Hearings diary · {formatDate(date, { weekday: true })}</h1>
         </div>

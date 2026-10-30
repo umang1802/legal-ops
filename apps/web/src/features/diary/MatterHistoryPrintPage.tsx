@@ -13,6 +13,7 @@ import { Alert } from '@legalops/ui';
 import { useQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { Link, useParams } from 'react-router';
+import { FirmLogo } from '../../components/branding/FirmLogo.js';
 import { PrintShell } from '../../components/print/PrintShell.js';
 import { api, qs } from '../../lib/api.js';
 import { canAct, useSession } from '../../lib/auth.js';
@@ -67,6 +68,7 @@ export function MatterHistoryPrintPage() {
       ) : (
         <>
           <header className="border-b border-gray-400 pb-3">
+            <FirmLogo name={me.organization.name} logoUrl={me.organization.logoUrl} className="mb-1 max-h-10 max-w-48" />
             <p className="text-base font-semibold">{me.organization.name}</p>
             <h1 className="text-xl font-semibold">Matter history · {m.title}</h1>
             <p className="mt-1 text-xs text-gray-700">
