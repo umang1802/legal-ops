@@ -13,7 +13,7 @@ Read this first, then `infra/docs/deploy-runbook.md`, which has the step-by-step
 ### Done and live
 | Item | State |
 |---|---|
-| **Product name** | **LexForgeX** (domain `lexforgex.com`). User-visible text now says LexForgeX everywhere (rename done 27 Oct 2026). Internal names stay as they are on purpose: the `@legalops/*` package scope, the repo name, file paths and the dev seed password. |
+| **Product name** | **LexForgeX** (domain `lexforgex.com`). User-visible text now says LexForgeX everywhere (rename done 27 Oct 2026). Logo: the Plate IV hallmark from `lexforgex-logo/hallmark` (gold V over bone Λ on deep teal `#0e2a3d`) is in the app header, sign-in pages, favicon, install icons and link preview (30 Oct 2026); source art stays in `lexforgex-logo/`. Internal names stay as they are on purpose: the `@legalops/*` package scope, the repo name, file paths and the dev seed password. |
 | **AWS account** | A new, dedicated account for LexForgeX. Region **ap-south-1 (Mumbai)** for everything except the CloudFront certificate (us-east-1). |
 | **Domain** | `lexforgex.com`, registered at **GoDaddy**, with **DNS at GoDaddy**. GoDaddy email MX records sit on the root domain; don't remove them. |
 | **Marketing site** | Live at **https://www.lexforgex.com**: S3 (private bucket) behind CloudFront `d3ssyoikxjjvrg.cloudfront.net`, ACM certificate in us-east-1 for `lexforgex.com` + `www`. The bare `lexforgex.com` is a GoDaddy 301 forward to www; it currently forwards to `http://`, and should be changed to `https://`. Source: `Eduforgex/lexforgex-web/`, not yet a git repo. |
@@ -38,6 +38,16 @@ Read this first, then `infra/docs/deploy-runbook.md`, which has the step-by-step
   - Caddy serves the SPA and `/api` over TLS, with HSTS and nosniff
   - the admin script creates an admin
   - platform login works through the proxy (cookie `Secure`, path `/api/v1/platform`)
+
+### Online payments through Zoho Payments (written 4 Nov 2026; not committed or deployed yet)
+Clients can pay a firm's invoice through a Zoho Payments link. Each **firm uses its own Zoho Payments account**; LexForgeX never holds the money.
+- **Settings (platform console):** firm page → "Online payments (Zoho Pay)". Platform admins enter environment (sandbox/live), Zoho account ID, OAuth client ID, client secret, refresh token and the webhook signing key. Secrets are AES-256-GCM encrypted with `PLATFORM_SECRET_KEY` (so that key must never change; same rule as TOTP) and are never sent back to the browser. Changes are in the platform audit log without values. "Test connection" only signs in to Zoho; it moves no money.
+- **Firm side:** an issued, unpaid invoice shows **Pay online** → "Create payment link" (full amount due, or a smaller amount). One open link per invoice. The link is shared by hand (copy or WhatsApp); Zoho is told **not** to message the client.
+- **Recording the payment:** Zoho calls `POST /api/v1/webhooks/zohopay/<firm id>`. The HMAC-SHA256 signature (`X-Zoho-Webhook-Signature`, `t=<ms>,v=<hex>` over `<t>.<raw body>`) is checked with that firm's signing key before anything else. A `payment_link.paid` event then records a receipt (method mapped from UPI/card/net banking) and settles the invoice, in one database transaction with the event record, so retries can't double-record. If the invoice was already settled or voided, the money is kept as a client advance. `payment_link.expired` and `payment_link.canceled` update the link.
+- **One-time setup per firm, in that firm's Zoho Payments account:** (1) register an OAuth client in the Zoho API Console (type ORG) and generate a refresh token with scopes `ZohoPay.payments.CREATE, READ, UPDATE` (sandbox: `ZohoPaySandbox.*`); (2) add a webhook to the URL shown on the card, subscribed to `payment_link.paid`, `payment_link.expired`, `payment_link.canceled`; (3) paste the webhook's signing key into the card, run Test connection, then switch it on. Start in **Sandbox** and take a test payment before going live.
+- **Files:** `apps/api/src/integrations/zohopay/` (API client, signature check), `apps/api/src/modules/online-payments/`, migration `0016_online_payments_zohopay.sql`, `apps/web/src/platform/FirmZohoPayCard.tsx`, `apps/web/src/features/billing/PayOnlineCard.tsx`. Tests: `apps/api/test/online-payments.test.ts` (uses a fake Zoho).
+- **Not done / to decide:** no pay-by-link email (we don't email clients while SES is limited); no refunds from LexForgeX (refund in Zoho, then reverse the receipt by hand); no client-facing return page; the webhook is not registered automatically (Zoho API supports it with the settings scope if we want that later). Zoho's webhook retry policy and any minimum amount are as per Zoho's docs: check them in sandbox.
+- **Live endpoints used:** `https://accounts.zoho.in` (sign-in), `https://payments.zoho.in/api/v1` (live) and `https://paymentssandbox.zoho.in/api/v1` (sandbox). India data centre only for now.
 
 ### Deployment progress (updated 23 Oct 2026 by Aakash, with Claude Code)
 

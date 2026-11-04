@@ -35,6 +35,7 @@ import { workflowsRouter } from './modules/workflows/workflows.routes.js';
 import { organizationRouter } from './modules/organizations/organizations.routes.js';
 import { publicLogoRouter } from './modules/organizations/public-logo.routes.js';
 import { platformRouter } from './modules/platform/platform.routes.js';
+import { webhooksRouter } from './modules/online-payments/webhooks.routes.js';
 
 const DEFAULT_LIMITS: RateLimits = { loginPerWindow: 10, resetPerWindow: 5, windowMs: 15 * 60_000 };
 
@@ -68,6 +69,8 @@ export function createApp(deps: Deps, opts: { rateLimits?: Partial<RateLimits> }
       methods: ['GET', 'POST', 'PATCH', 'DELETE'],
     }),
   );
+  // Payment-gateway webhooks need the exact bytes for signature checks, so they get a raw body and skip the JSON parser.
+  app.use('/api/v1/webhooks', express.raw({ type: () => true, limit: '1mb' }), webhooksRouter(deps));
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
 

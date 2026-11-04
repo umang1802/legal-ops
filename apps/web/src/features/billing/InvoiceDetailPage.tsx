@@ -21,6 +21,7 @@ import { formatDate } from '../../lib/format.js';
 import { formatINR, isZero } from '../../lib/money.js';
 import { INVOICE_TONE } from '../../lib/status.js';
 import { NotFound } from '../common/NotFound.js';
+import { PayOnlineCard } from './PayOnlineCard.js';
 import { ReasonSheet } from './ReasonSheet.js';
 import { RecordPaymentSheet } from './RecordPaymentSheet.js';
 
@@ -223,6 +224,8 @@ export function InvoiceDetailPage() {
               </dl>
             </CardBody>
           </Card>
+
+          <PayOnlineCard invoice={i} canManage={manage} />
 
           <Card>
             <CardHeader title="Payments & credits" />

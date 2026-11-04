@@ -7,7 +7,8 @@ import {
   type recordPaymentSchema,
 } from '@legalops/validation';
 import type { z } from 'zod';
-import { query, queryOne, withTransaction, type Db } from '../../db/pool.js';
+import type { PoolClient } from 'pg';
+import { inTransaction, query, queryOne, withTransaction, type Db } from '../../db/pool.js';
 import { sql, type SqlFragment } from '../../db/sql.js';
 import type { Deps } from '../../deps.js';
 import type { RequestMeta, TenantContext } from '../../http/context.js';
@@ -298,8 +299,10 @@ export async function recordPayment(
   ctx: TenantContext,
   input: z.output<typeof recordPaymentSchema>,
   meta: RequestMeta,
+  /** Pass an open transaction to make this payment part of it (the online-payment webhook does). */
+  existingTx?: PoolClient,
 ): Promise<PaymentDto> {
-  return withTransaction(deps.pool, async (tx) => {
+  return inTransaction(deps.pool, existingTx, async (tx) => {
     const client = await queryOne<{ id: string; name: string }>(
       tx,
       sql`SELECT id, name FROM clients WHERE id = ${input.clientId} AND organization_id = ${ctx.organizationId}`,

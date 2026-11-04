@@ -10,6 +10,7 @@ import {
   suspendFirmSchema,
   totpCodeSchema,
   uuidSchema,
+  zohoPayConfigSchema,
 } from '@legalops/validation';
 import { Router, type CookieOptions, type NextFunction, type Request, type Response } from 'express';
 import { rateLimit } from 'express-rate-limit';
@@ -23,6 +24,7 @@ import { requireJson } from '../../middleware/security.js';
 import type { RateLimits } from '../auth/auth.routes.js';
 import * as platformAuth from './platform-auth.service.js';
 import * as firms from './platform-firms.service.js';
+import * as zohoPay from '../online-payments/zohopay-config.service.js';
 
 export const PLATFORM_COOKIE = 'lf_psid';
 const COOKIE_PATH = '/api/v1/platform';
@@ -166,6 +168,20 @@ export function platformRouter(deps: Deps, limits: RateLimits): Router {
     if (!isFeatureKey(key)) throw validationError(`Unknown feature "${key}"`);
     const { enabled } = parse(setFirmFeatureSchema, req.body);
     res.json({ data: await firms.setFirmFeatureAsAdmin(deps, platformCtx(req), parse(uuidSchema, req.params.firmId), key, enabled, requestMeta(req)) });
+  });
+  // Online payments (Zoho Payments) for a firm. Secrets are write-only: responses say only whether each is on file.
+  r.get('/firms/:firmId/zohopay', async (req, res) => {
+    res.set('Cache-Control', 'no-store').json({ data: await zohoPay.getZohoPayConfig(deps, parse(uuidSchema, req.params.firmId)) });
+  });
+  r.patch('/firms/:firmId/zohopay', async (req, res) => {
+    const input = parse(zohoPayConfigSchema, req.body);
+    res.set('Cache-Control', 'no-store').json({ data: await zohoPay.saveZohoPayConfig(deps, platformCtx(req), parse(uuidSchema, req.params.firmId), input, requestMeta(req)) });
+  });
+  r.post('/firms/:firmId/zohopay/test', async (req, res) => {
+    res.set('Cache-Control', 'no-store').json({ data: await zohoPay.testZohoPayConfig(deps, platformCtx(req), parse(uuidSchema, req.params.firmId), requestMeta(req)) });
+  });
+  r.post('/firms/:firmId/zohopay/remove', async (req, res) => {
+    res.set('Cache-Control', 'no-store').json({ data: await zohoPay.removeZohoPayConfig(deps, platformCtx(req), parse(uuidSchema, req.params.firmId), requestMeta(req)) });
   });
   r.get('/audit-logs', async (req, res) => {
     const { items, meta } = await firms.listPlatformAudit(deps.pool, parse(listPlatformAuditSchema, req.query));

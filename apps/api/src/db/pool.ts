@@ -43,3 +43,12 @@ export async function withTransaction<T>(
     client.release();
   }
 }
+
+/** Joins a transaction that is already open, or starts one. Lets a caller make several writes atomic. */
+export async function inTransaction<T>(
+  pool: pg.Pool,
+  existing: pg.PoolClient | undefined,
+  fn: (client: pg.PoolClient) => Promise<T>,
+): Promise<T> {
+  return existing ? fn(existing) : withTransaction(pool, fn);
+}

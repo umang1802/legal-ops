@@ -2,6 +2,7 @@ import { AGING_BUCKETS } from '@legalops/types';
 import {
   allocationSchema,
   createInvoiceSchema,
+  createPaymentLinkSchema,
   creditNoteSchema,
   expenseSchema,
   feeAgreementSchema,
@@ -25,6 +26,7 @@ import type { Deps } from '../../deps.js';
 import { parse } from '../../http/validate.js';
 import { requestMeta } from '../../middleware/request-context.js';
 import { requireAnyPermission, requireAuth, requirePermission, tenant } from '../../middleware/security.js';
+import * as paymentLinks from '../online-payments/payment-links.service.js';
 import * as expenses from './expenses.service.js';
 import * as fees from './fee-agreements.service.js';
 import * as invoices from './invoices.service.js';
@@ -68,6 +70,17 @@ export function invoicesRouter(deps: Deps): Router {
   r.delete('/:invoiceId', requirePermission('invoices.manage'), async (req, res) => {
     await invoices.deleteDraft(deps, tenant(req), id(req.params.invoiceId), requestMeta(req));
     res.status(204).end();
+  });
+  // Pay-online links (Zoho Payments). The webhook, not these routes, is what records the money.
+  r.get('/:invoiceId/payment-links', requirePermission('billing.view'), async (req, res) => {
+    res.json({ data: await paymentLinks.listInvoicePaymentLinks(deps.pool, deps, tenant(req), id(req.params.invoiceId)) });
+  });
+  r.post('/:invoiceId/payment-links', requirePermission('invoices.manage'), async (req, res) => {
+    const input = parse(createPaymentLinkSchema, req.body);
+    res.status(201).json({ data: await paymentLinks.createInvoicePaymentLink(deps, tenant(req), id(req.params.invoiceId), input, requestMeta(req)) });
+  });
+  r.post('/:invoiceId/payment-links/:linkId/cancel', requirePermission('invoices.manage'), async (req, res) => {
+    res.json({ data: await paymentLinks.cancelInvoicePaymentLink(deps, tenant(req), id(req.params.invoiceId), id(req.params.linkId), requestMeta(req)) });
   });
   r.post('/:invoiceId/issue', requirePermission('invoices.manage'), async (req, res) => {
     res.json({

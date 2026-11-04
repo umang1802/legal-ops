@@ -1,6 +1,7 @@
 import { Button, Spinner } from '@legalops/ui';
 import { Suspense } from 'react';
 import { Navigate, NavLink, Outlet, useNavigate } from 'react-router';
+import { LogoMark } from '../components/branding/LogoMark.js';
 import { usePlatformLogout, usePlatformMe } from './auth.js';
 
 const link = ({ isActive }: { isActive: boolean }) =>
@@ -22,7 +23,10 @@ export function PlatformShell() {
     <div className="min-h-dvh bg-slate-50">
       <header className="bg-slate-950 text-white">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
-          <span className="font-semibold">LexForgeX Platform</span>
+          <span className="inline-flex items-center gap-2.5 font-semibold">
+            <LogoMark className="size-7" />
+            LexForgeX Platform
+          </span>
           <nav className="flex gap-1">
             <NavLink to="/platform/firms" className={link}>
               Firms

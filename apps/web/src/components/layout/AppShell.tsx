@@ -1,10 +1,11 @@
 import type { Permission } from '@legalops/types';
 import { Button, cn, SearchInput, Sheet, SkeletonList } from '@legalops/ui';
-import { Banknote, Briefcase, CheckSquare, Home, LogOut, Menu, Plus, Scale, Search } from 'lucide-react';
+import { Banknote, Briefcase, CheckSquare, Home, LogOut, Menu, Plus, Search } from 'lucide-react';
 import { Suspense, useState } from 'react';
 import { NavLink, Outlet, ScrollRestoration, useNavigate } from 'react-router';
 import { canAct, useLogout, useSession } from '../../lib/auth.js';
 import { FirmLogo } from '../branding/FirmLogo.js';
+import { Logo, LogoMark } from '../branding/LogoMark.js';
 import { PoweredBy } from '../branding/PoweredBy.js';
 import { initials } from '../../lib/format.js';
 import { OrgSwitcher } from './OrgSwitcher.js';
@@ -78,10 +79,7 @@ export function AppShell() {
           {me.organization.logoUrl ? (
             <FirmLogo name={me.organization.name} logoUrl={me.organization.logoUrl} className="max-h-10 max-w-full" />
           ) : (
-            <>
-              <Scale className="size-6 text-brand-700" aria-hidden />
-              <span className="text-lg font-semibold tracking-tight">LexForgeX</span>
-            </>
+            <Logo markClassName="size-8" textClassName="text-sm" />
           )}
         </div>
         <div className="space-y-3 px-3">
@@ -136,7 +134,7 @@ export function AppShell() {
           {me.organization.logoUrl ? (
             <FirmLogo name={me.organization.name} logoUrl={me.organization.logoUrl} className="h-7 max-w-24" />
           ) : (
-            <Scale className="size-5 text-brand-700" aria-hidden />
+            <LogoMark className="size-7" />
           )}
           <span className="min-w-0 flex-1 truncate font-semibold">{me.organization.name}</span>
           <NavLink
