@@ -20,3 +20,4 @@ export { Tabs, type TabItem } from './Tabs.js';
 export { Combobox, type ComboOption } from './Combobox.js';
 export { Pagination } from './Pagination.js';
 export { SearchInput } from './SearchInput.js';
+export { OtpInput } from './OtpInput.js';

@@ -76,18 +76,39 @@ export function SelectField({ label, error, hint, id, options, className, ...res
   const fieldId = id ?? autoId;
   return (
     <FieldShell label={label} error={error} hint={hint} id={fieldId}>
-      <select
-        id={fieldId}
-        aria-invalid={error ? true : undefined}
-        className={cn(CONTROL, 'h-11 pr-8', error ? 'border-danger-600' : 'border-line', className)}
-        {...rest}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      {/* The browser's own arrow sits hard against the edge and differs per browser, so draw one and hide the native one. */}
+      <div className="relative">
+        <select
+          id={fieldId}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${fieldId}-error` : hint ? `${fieldId}-hint` : undefined}
+          className={cn(
+            CONTROL,
+            'h-11 appearance-none pr-10',
+            error ? 'border-danger-600' : 'border-line',
+            className,
+          )}
+          {...rest}
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <svg
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.75"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+          className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted"
+        >
+          <path d="m5 7.5 5 5 5-5" />
+        </svg>
+      </div>
     </FieldShell>
   );
 }
