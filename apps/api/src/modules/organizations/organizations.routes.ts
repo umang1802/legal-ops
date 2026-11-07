@@ -1,5 +1,6 @@
 import {
   completeLogoUploadSchema,
+  invoiceFormatSchema,
   inviteMemberSchema,
   startLogoUploadSchema,
   startSignatureUploadSchema,
@@ -12,6 +13,7 @@ import type { Deps } from '../../deps.js';
 import { parse } from '../../http/validate.js';
 import { requestMeta } from '../../middleware/request-context.js';
 import { requireAuth, requirePermission, tenant } from '../../middleware/security.js';
+import * as invoiceFormat from './invoice-format.service.js';
 import * as logo from './logo.service.js';
 import * as orgs from './organizations.service.js';
 import * as signature from './signature.service.js';
@@ -27,6 +29,21 @@ export function organizationRouter(deps: Deps): Router {
   r.patch('/', requirePermission('organization.manage'), async (req, res) => {
     const input = parse(updateOrganizationSchema, req.body);
     res.json({ data: await orgs.updateOrganization(deps, tenant(req), input, requestMeta(req)) });
+  });
+
+  // How the firm's invoices look: sections and their order, letterhead, labels, footer, watermark.
+  r.get('/invoice-format', requirePermission('organization.manage'), async (req, res) => {
+    res.json({ data: await invoiceFormat.loadInvoiceFormat(deps.pool, tenant(req).organizationId) });
+  });
+  r.patch('/invoice-format', requirePermission('organization.manage'), async (req, res) => {
+    res.json({ data: await invoiceFormat.saveInvoiceFormat(deps, tenant(req), parse(invoiceFormatSchema, req.body), requestMeta(req)) });
+  });
+  r.post('/invoice-format/reset', requirePermission('organization.manage'), async (req, res) => {
+    res.json({ data: await invoiceFormat.resetInvoiceFormat(deps, tenant(req), requestMeta(req)) });
+  });
+  // A sample invoice in an unsaved draft format, for the live preview.
+  r.post('/invoice-format/preview', requirePermission('organization.manage'), async (req, res) => {
+    res.set('Cache-Control', 'no-store').json({ data: await invoiceFormat.previewInvoiceFormat(deps, tenant(req), parse(invoiceFormatSchema, req.body)) });
   });
 
   r.post('/logo/uploads', requirePermission('organization.manage'), async (req, res) => {

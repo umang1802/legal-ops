@@ -6,6 +6,7 @@ import {
   CalendarDays,
   CalendarSync,
   CheckSquare,
+  FileText,
   Home,
   Mail,
   Zap,
@@ -30,6 +31,7 @@ export const SIDEBAR: NavItem[] = [
 
 export const SETTINGS_NAV: NavItem[] = [
   { to: '/settings/firm', label: 'Firm settings', icon: Settings, permission: 'organization.manage' },
+  { to: '/settings/invoice-format', label: 'Invoice format', icon: FileText, permission: 'organization.manage', feature: 'billing' },
   { to: '/settings/automations', label: 'Automations', icon: Zap, permission: 'workflows.manage' },
   { to: '/settings/members', label: 'Team', icon: Users, permission: 'dashboard.view' },
   { to: '/settings/calendar', label: 'Calendar sync', icon: CalendarSync, permission: 'matters.view', feature: 'calendar_sync' },

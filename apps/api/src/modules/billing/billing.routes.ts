@@ -37,7 +37,8 @@ import * as fees from './fee-agreements.service.js';
 import * as invoices from './invoices.service.js';
 import * as payments from './payments.service.js';
 import * as revisions from './revisions.service.js';
-import { invoicePdfBytes } from './pdf/invoice-pdf.js';
+import { invoiceDocumentModel, invoicePdfBytes, loadInvoiceDocData } from './pdf/invoice-pdf.js';
+import { toWireModel } from './pdf/wire.js';
 import { readImage } from './pdf/images.js';
 import { renderReceiptPdf } from './pdf/receipt-pdf.js';
 import * as signed from './signed-documents.service.js';
@@ -78,6 +79,11 @@ export function invoicesRouter(deps: Deps): Router {
     );
     res.setHeader('Cache-Control', 'private, no-store');
     res.send(pdf);
+  });
+  // The invoice as a drawable document (the same one the PDF is made from), for the print page.
+  r.get('/:invoiceId/document', requirePermission('billing.view'), async (req, res) => {
+    const data = await loadInvoiceDocData(deps, tenant(req), id(req.params.invoiceId));
+    res.set('Cache-Control', 'private, no-store').json({ data: toWireModel(invoiceDocumentModel(data)) });
   });
   // The signature image as it was when the invoice was issued (the print page shows this, not the member's current one).
   r.get('/:invoiceId/signature', requirePermission('billing.view'), async (req, res) => {

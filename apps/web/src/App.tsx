@@ -23,6 +23,7 @@ import { MorePage } from './features/more/MorePage.js';
 import { FirmSettingsPage } from './features/settings/FirmSettingsPage.js';
 import { MembersPage } from './features/settings/MembersPage.js';
 import { CalendarSyncPage } from './features/settings/CalendarSyncPage.js';
+import { InvoiceFormatPage } from './features/settings/InvoiceFormatPage.js';
 
 // Route-level code splitting: billing, print views and the calendar load on first visit.
 const BillingPage = lazy(() =>
@@ -194,6 +195,16 @@ const router = createBrowserRouter([
             element: (
               <RequirePermission permission="organization.manage">
                 <FirmSettingsPage />
+              </RequirePermission>
+            ),
+          },
+          {
+            path: '/settings/invoice-format',
+            element: (
+              <RequirePermission permission="organization.manage">
+                <RequireFeature feature="billing">
+                  <InvoiceFormatPage />
+                </RequireFeature>
               </RequirePermission>
             ),
           },

@@ -9,3 +9,4 @@ export * from './documents.js';
 export * from './features.js';
 export * from './branding.js';
 export * from './online-payments.js';
+export * from './document-model.js';
