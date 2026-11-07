@@ -8,6 +8,7 @@ import {
 } from '@legalops/types';
 import {
   Alert,
+  Badge,
   Button,
   Card,
   CardBody,
@@ -24,6 +25,7 @@ import {
   createInvoiceSchema,
   fromPaise,
   InvoiceCalcError,
+  reviseInvoiceSchema,
   updateInvoiceSchema,
 } from '@legalops/validation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -35,6 +37,19 @@ import { api, ApiError, qs } from '../../lib/api.js';
 import { useSession } from '../../lib/auth.js';
 import { addDays, todayIn } from '../../lib/format.js';
 import { formatINR } from '../../lib/money.js';
+import {
+  addMonths,
+  checkSchedule,
+  isLockedRow,
+  MAX_INSTALMENTS,
+  MIN_INSTALMENTS,
+  parseRupees,
+  sameSchedule,
+  splitEqual,
+  toPayload,
+  type ScheduleRow,
+} from './schedule.js';
+import { IssueSheet } from './IssueSheet.js';
 import { MatterPicker } from '../matters/pickers.js';
 
 type Line = {
@@ -50,6 +65,13 @@ type Line = {
 };
 
 let seq = 0;
+let rowSeq = 0;
+const newRow = (over: Partial<ScheduleRow> = {}): ScheduleRow => ({
+  key: `r${++rowSeq}`,
+  amount: '',
+  dueDate: '',
+  ...over,
+});
 const newLine = (
   over: Partial<Line> = {},
   defaults: { sac: string; rate: string } = { sac: '', rate: '' },
@@ -95,8 +117,17 @@ export function InvoiceEditorPage() {
   const [placeOfSupply, setPlaceOfSupply] = useState('');
   const [notes, setNotes] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Instalment schedule. `rows` only goes to the server when the user changed it (absent = unchanged there).
+  const [instOn, setInstOn] = useState(false);
+  const [rows, setRows] = useState<ScheduleRow[]>([]);
+  const [splitN, setSplitN] = useState('3');
+  const [scheduleDirty, setScheduleDirty] = useState(false);
+  const [notifyClient, setNotifyClient] = useState(false);
+  const [issuing, setIssuing] = useState<InvoiceDetailDto | null>(null);
   const [initialised, setInitialised] = useState(false);
 
+  // "Edit invoice" on an issued simple-mode invoice opens this same editor in revision mode.
+  const revising = Boolean(invoiceId) && params.get('revise') === '1' && Boolean(existing.data?.canRevise);
   const presetMatterId = existing.data?.matter.id ?? params.get('matterId');
   const matterDetail = useQuery({
     queryKey: ['matter', presetMatterId ?? matter?.value],
@@ -146,6 +177,13 @@ export function InvoiceEditorPage() {
       setRcm(d.isReverseCharge);
       setPlaceOfSupply(d.placeOfSupply ?? '');
       setNotes(d.notes ?? '');
+      setInstOn(d.instalments.length > 0);
+      setRows(
+        d.instalments.map((x) =>
+          newRow({ amount: x.amount, dueDate: x.dueDate, status: x.status, paid: x.paid }),
+        ),
+      );
+      setSplitN(String(d.instalments.length || 3));
       setInitialised(true);
     } else if (!invoiceId && agreements.data) {
       const msId = params.get('milestoneId');
@@ -189,11 +227,65 @@ export function InvoiceEditorPage() {
     }
   }, [lines, discount, tax, gst, placeOfSupply, org.data, rcm]);
 
+  const totalPaise = preview.totals?.total ?? null;
+  const check = useMemo(() => checkSchedule(rows, totalPaise), [rows, totalPaise]);
+  const scheduleError = instOn ? check.error : null;
+  const lastDue = rows[rows.length - 1]?.dueDate || dueDate;
+  const lastLocked = rows.reduce((a, r, i) => (isLockedRow(r) ? i : a), -1);
+  const effectiveDue = instOn && rows.length > 0 ? lastDue : dueDate;
+
+  const editRows = (next: ScheduleRow[]) => {
+    setRows(next);
+    setScheduleDirty(true);
+  };
+  const toggleInstalments = (on: boolean) => {
+    setInstOn(on);
+    setScheduleDirty(true);
+    if (on && rows.length === 0 && totalPaise) {
+      const n = Number(splitN);
+      splitInto(n >= MIN_INSTALMENTS && n <= MAX_INSTALMENTS ? n : 3);
+    }
+  };
+  /**
+   * Equal split into n parts, remainder paise on the LAST. Rows never move: fully paid rows stay first and untouched,
+   * a part-paid row keeps what was paid (its new amount = paid + its share), and only the unpaid remainder is re-split.
+   * On an existing schedule the unpaid rows keep their dates (extra rows continue monthly from the first date).
+   */
+  const splitInto = (n: number) => {
+    if (!totalPaise || n < MIN_INSTALMENTS || n > MAX_INSTALMENTS) return;
+    const kept = rows.filter(isLockedRow);
+    const keptSum = kept.reduce((a, r) => a + (parseRupees(r.amount) ?? 0), 0);
+    const tail = rows.slice(kept.length);
+    const alreadyPaid = tail[0]?.status === 'part_paid' ? (parseRupees(tail[0].paid ?? '0') ?? 0) : 0;
+    const free = n - kept.length;
+    const pool = totalPaise - keptSum - alreadyPaid;
+    if (free < 1 || pool <= 0) return;
+    const parts = splitEqual(pool, free);
+    const firstDate = rows[0]?.dueDate || dueDate || addDays(today, 15);
+    const next = parts.map((p, k) => {
+      const old = tail[k];
+      const amount = fromPaise(p + (k === 0 ? alreadyPaid : 0));
+      const date = revising && old?.dueDate ? old.dueDate : addMonths(firstDate, kept.length + k);
+      return old ? { ...old, amount, dueDate: date } : newRow({ amount, dueDate: date });
+    });
+    editRows([...kept, ...next]);
+  };
+
   const save = useMutation({
-    mutationFn: async (issue: boolean) => {
+    mutationFn: async (_issue: boolean) => {
+      // absent = unchanged; [] = switch the schedule off; 2–24 = replace it.
+      const hadSchedule = (existing.data?.instalments.length ?? 0) > 0;
+      const unchanged = existing.data ? sameSchedule(rows, existing.data.instalments) && instOn === hadSchedule : false;
+      const instalments = instOn
+        ? !invoiceId || (scheduleDirty && !unchanged)
+          ? toPayload(rows)
+          : undefined
+        : hadSchedule && scheduleDirty
+          ? []
+          : undefined;
       const body = {
         issueDate,
-        dueDate,
+        dueDate: effectiveDue,
         notes,
         discountAmount: discount || '0',
         taxAmount: gst ? '0' : tax || '0',
@@ -210,19 +302,26 @@ export function InvoiceEditorPage() {
             feeMilestoneId: l.feeMilestoneId ?? null,
             expenseId: l.expenseId ?? null,
           })),
+        ...(instalments ? { instalments } : {}),
       };
+      if (revising) {
+        return api.patch<InvoiceDetailDto>(
+          `/invoices/${invoiceId}/revision`,
+          reviseInvoiceSchema.parse({ ...body, notifyClient: notifyClient && Boolean(existing.data?.sentAt) }),
+        );
+      }
       if (invoiceId) {
         await api.patch<InvoiceDetailDto>(`/invoices/${invoiceId}`, updateInvoiceSchema.parse(body));
-        return issue
-          ? api.post<InvoiceDetailDto>(`/invoices/${invoiceId}/issue`, { issueDate, dueDate })
-          : api.get<InvoiceDetailDto>(`/invoices/${invoiceId}`);
+        return api.get<InvoiceDetailDto>(`/invoices/${invoiceId}`);
       }
-      return api.post<InvoiceDetailDto>('/invoices', createInvoiceSchema.parse({ ...body, matterId, issue }));
+      // "Issue invoice" saves the draft first, then the issue sheet picks signatory / send-later.
+      return api.post<InvoiceDetailDto>('/invoices', createInvoiceSchema.parse({ ...body, matterId, issue: false }));
     },
-    onSuccess: (inv) => {
+    onSuccess: (inv, issue) => {
       for (const k of ['invoices', 'invoice', 'billing', 'dashboard', 'matter', 'expenses', 'fee-agreements'])
         void qc.invalidateQueries({ queryKey: [k] });
-      navigate(`/invoices/${inv.id}`, { replace: true });
+      if (issue) setIssuing(inv);
+      else navigate(`/invoices/${inv.id}`, { replace: true });
     },
     onError: (err) => {
       if (err instanceof z.ZodError)
@@ -235,7 +334,7 @@ export function InvoiceEditorPage() {
   });
 
   if (invoiceId && existing.isPending) return <SkeletonList rows={5} />;
-  if (existing.data && existing.data.status !== 'draft') {
+  if (existing.data && existing.data.status !== 'draft' && !revising) {
     return (
       <Alert tone="info">
         This invoice is issued and can no longer be edited. Use a credit note or void it.
@@ -251,15 +350,27 @@ export function InvoiceEditorPage() {
     .flatMap((a) => a.milestones)
     .filter((m) => m.status === 'planned' && !usedMilestones.has(m.id));
   const t = preview.totals;
+  // Revisions: show the server's refusal (409/422) verbatim, even when it carries field details.
   const generalError =
-    save.error instanceof ApiError && save.error.details.length === 0 ? save.error.message : null;
+    save.error instanceof ApiError && (revising || save.error.details.length === 0) ? save.error.message : null;
 
   return (
     <div className="space-y-4 pb-24 sm:pb-0">
       <PageHeader
-        title={invoiceId ? 'Edit draft invoice' : 'New invoice'}
-        description={gst ? 'GST invoice' : 'Tax entered as a single amount (firm setting)'}
+        title={revising ? `Edit invoice ${existing.data?.invoiceNumber ?? ''}` : invoiceId ? 'Edit draft invoice' : 'New invoice'}
+        description={
+          revising
+            ? `Saving creates revision ${(existing.data?.revision ?? 0) + 1}. The number, date, client and matter stay fixed.`
+            : gst
+              ? 'GST invoice'
+              : 'Tax entered as a single amount (firm setting)'
+        }
       />
+      {revising ? (
+        <Alert tone="info">
+          Editing creates Revision {(existing.data?.revision ?? 0) + 1}; any signed copy will no longer apply.
+        </Alert>
+      ) : null}
       {generalError ? <Alert tone="danger">{generalError}</Alert> : null}
 
       <Card>
@@ -442,16 +553,28 @@ export function InvoiceEditorPage() {
             label="Invoice date"
             type="date"
             value={issueDate}
+            disabled={revising}
             onChange={(e) => setIssueDate(e.target.value)}
             error={errors.issueDate}
           />
-          <TextField
-            label="Due date"
-            type="date"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            error={errors.dueDate}
-          />
+          {instOn ? (
+            <TextField
+              label="Due date"
+              type="date"
+              value={effectiveDue}
+              disabled
+              hint="The last instalment’s date"
+              onChange={() => undefined}
+            />
+          ) : (
+            <TextField
+              label="Due date"
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              error={errors.dueDate}
+            />
+          )}
           <TextField
             label="Discount (₹)"
             inputMode="decimal"
@@ -511,6 +634,137 @@ export function InvoiceEditorPage() {
       </Card>
 
       <Card>
+        <CardHeader title="Pay in instalments" description="Split the total into dated parts. Each gets its own payment link." />
+        <CardBody className="space-y-3">
+          <label className="flex min-h-11 items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="size-4 accent-brand-700"
+              checked={instOn}
+              onChange={(e) => toggleInstalments(e.target.checked)}
+            />
+            Pay this invoice in instalments
+          </label>
+          {instOn ? (
+            <>
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="w-24">
+                  <TextField
+                    label="Instalments"
+                    inputMode="numeric"
+                    value={splitN}
+                    onChange={(e) => setSplitN(e.target.value.replace(/\D/g, ''))}
+                  />
+                </div>
+                <Button
+                  variant="secondary"
+                  disabled={!totalPaise || Number(splitN) < MIN_INSTALMENTS || Number(splitN) > MAX_INSTALMENTS}
+                  onClick={() => splitInto(Number(splitN))}
+                >
+                  Split equally into {splitN || '…'}, monthly
+                </Button>
+              </div>
+              <ul className="space-y-2">
+                {rows.map((r, idx) => {
+                  const locked = isLockedRow(r);
+                  const setRow = (patch: Partial<ScheduleRow>) =>
+                    editRows(rows.map((x) => (x.key === r.key ? { ...x, ...patch } : x)));
+                  return (
+                    <li key={r.key} className="rounded-lg border border-line p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2 text-xs text-muted">
+                        <span className="font-medium text-ink-soft">Instalment {idx + 1}</span>
+                        {locked ? (
+                          <Badge tone="success">Paid</Badge>
+                        ) : r.status === 'part_paid' ? (
+                          <Badge tone="warning">Part paid · {formatINR(r.paid ?? '0')}</Badge>
+                        ) : null}
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                        <TextField
+                          label="Amount (₹)"
+                          inputMode="decimal"
+                          value={r.amount}
+                          disabled={locked}
+                          onChange={(e) => setRow({ amount: e.target.value })}
+                          error={errors[`instalments.${idx}.amount`]}
+                        />
+                        <TextField
+                          label="Due date"
+                          type="date"
+                          value={r.dueDate}
+                          disabled={locked}
+                          onChange={(e) => setRow({ dueDate: e.target.value })}
+                          error={errors[`instalments.${idx}.dueDate`]}
+                        />
+                        {!locked && !(parseRupees(r.paid ?? '0') ?? 0) ? (
+                          <button
+                            type="button"
+                            aria-label={`Remove instalment ${idx + 1}`}
+                            disabled={rows.length <= MIN_INSTALMENTS || idx < lastLocked}
+                            onClick={() => editRows(rows.filter((x) => x.key !== r.key))}
+                            className="grid size-10 place-items-center justify-self-end rounded-lg text-muted hover:bg-subtle disabled:opacity-40"
+                          >
+                            <X className="size-4" />
+                          </button>
+                        ) : null}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<Plus className="size-4" />}
+                  disabled={rows.length >= MAX_INSTALMENTS}
+                  onClick={() =>
+                    editRows([
+                      ...rows,
+                      newRow({
+                        dueDate: rows.length ? addMonths(rows[0]!.dueDate || dueDate, rows.length) : dueDate,
+                      }),
+                    ])
+                  }
+                >
+                  Add instalment
+                </Button>
+                <p
+                  className={cn(
+                    'text-sm tabular-nums',
+                    totalPaise !== null && check.difference !== 0 ? 'text-danger-700' : 'text-ink-soft',
+                  )}
+                >
+                  {formatINR(fromPaise(check.sum))} of {totalPaise !== null ? formatINR(fromPaise(totalPaise)) : '—'}
+                </p>
+              </div>
+              {scheduleError ? <Alert tone="warning">{scheduleError}</Alert> : null}
+            </>
+          ) : null}
+        </CardBody>
+      </Card>
+
+      {revising && !existing.data?.sentAt ? (
+        <p className="text-sm text-muted">
+          This invoice hasn’t been sent yet, so the client isn’t notified. Save, then use Send.
+        </p>
+      ) : null}
+      {revising && existing.data?.sentAt ? (
+        <label className="flex min-h-11 items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4 accent-brand-700"
+            checked={notifyClient}
+            onChange={(e) => setNotifyClient(e.target.checked)}
+          />
+          <span>
+            Notify client
+            <span className="block text-xs text-muted">Emails the client the updated invoice.</span>
+          </span>
+        </label>
+      ) : null}
+
+      <Card>
         <CardHeader title="Total" />
         <CardBody>
           {preview.error ? (
@@ -539,26 +793,48 @@ export function InvoiceEditorPage() {
         <Link to={invoiceId ? `/invoices/${invoiceId}` : '/billing'} className="hidden sm:block">
           <Button variant="secondary">Cancel</Button>
         </Link>
-        <Button
-          variant="secondary"
-          block
-          className="sm:w-auto"
-          loading={save.isPending && save.variables === false}
-          disabled={!matterId || Boolean(preview.error)}
-          onClick={() => save.mutate(false)}
-        >
-          Save draft
-        </Button>
-        <Button
-          block
-          className="sm:w-auto"
-          loading={save.isPending && save.variables === true}
-          disabled={!matterId || Boolean(preview.error)}
-          onClick={() => save.mutate(true)}
-        >
-          Issue invoice
-        </Button>
+        {revising ? (
+          <Button
+            block
+            className="sm:w-auto"
+            loading={save.isPending}
+            disabled={Boolean(preview.error) || Boolean(scheduleError)}
+            onClick={() => save.mutate(false)}
+          >
+            Save revision
+          </Button>
+        ) : (
+          <>
+            <Button
+              variant="secondary"
+              block
+              className="sm:w-auto"
+              loading={save.isPending && save.variables === false}
+              disabled={!matterId || Boolean(preview.error) || Boolean(scheduleError)}
+              onClick={() => save.mutate(false)}
+            >
+              Save draft
+            </Button>
+            <Button
+              block
+              className="sm:w-auto"
+              loading={save.isPending && save.variables === true}
+              disabled={!matterId || Boolean(preview.error) || Boolean(scheduleError)}
+              onClick={() => save.mutate(true)}
+            >
+              Issue invoice
+            </Button>
+          </>
+        )}
       </div>
+      {issuing ? (
+        <IssueSheet
+          open
+          invoice={issuing}
+          onClose={() => navigate(`/invoices/${issuing.id}`, { replace: true })}
+          onIssued={(inv) => navigate(`/invoices/${inv.id}`, { replace: true })}
+        />
+      ) : null}
     </div>
   );
 }

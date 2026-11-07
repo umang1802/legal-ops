@@ -32,6 +32,10 @@ type ClientRow = {
   notes: string | null;
   tags: string[];
   email_notifications_enabled: boolean;
+  salutation: ClientDto['salutation'];
+  title: string | null;
+  contact_person: string | null;
+  cc_emails: string[];
   status: ClientDto['status'];
   created_at: Date;
   updated_at: Date;
@@ -53,6 +57,10 @@ const COLS = [
   'notes',
   'tags',
   'email_notifications_enabled',
+  'salutation',
+  'title',
+  'contact_person',
+  'cc_emails',
   'status',
   'created_at',
   'updated_at',
@@ -76,6 +84,10 @@ const toDto = (c: ClientRow): ClientDto => ({
   notes: c.notes,
   tags: c.tags,
   emailNotificationsEnabled: c.email_notifications_enabled,
+  salutation: c.salutation,
+  title: c.title,
+  contactPerson: c.contact_person,
+  ccEmails: c.cc_emails,
   status: c.status,
   createdAt: iso(c.created_at)!,
   updatedAt: iso(c.updated_at)!,
@@ -201,6 +213,10 @@ type ClientWrite = {
   notes?: string | null | undefined;
   tags?: string[] | undefined;
   emailNotificationsEnabled?: boolean | undefined;
+  salutation?: ClientDto['salutation'] | undefined;
+  title?: string | null | undefined;
+  contactPerson?: string | null | undefined;
+  ccEmails?: string[] | undefined;
   status?: 'active' | 'inactive' | undefined;
 };
 
@@ -219,6 +235,10 @@ const COLUMN: Record<keyof ClientWrite, string> = {
   notes: 'notes',
   tags: 'tags',
   emailNotificationsEnabled: 'email_notifications_enabled',
+  salutation: 'salutation',
+  title: 'title',
+  contactPerson: 'contact_person',
+  ccEmails: 'cc_emails',
   status: 'status',
 };
 

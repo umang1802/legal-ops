@@ -25,7 +25,8 @@ export type LedgerEntry = {
     | 'payment_allocated'
     | 'allocation_reversed'
     | 'expense_recorded'
-    | 'expense_voided';
+    | 'expense_voided'
+    | 'invoice_revised';
   debit: Account;
   credit: Account;
   amountPaise: number;

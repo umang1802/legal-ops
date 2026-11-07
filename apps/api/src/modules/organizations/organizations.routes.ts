@@ -2,6 +2,7 @@ import {
   completeLogoUploadSchema,
   inviteMemberSchema,
   startLogoUploadSchema,
+  startSignatureUploadSchema,
   updateMemberSchema,
   updateOrganizationSchema,
   uuidSchema,
@@ -13,6 +14,7 @@ import { requestMeta } from '../../middleware/request-context.js';
 import { requireAuth, requirePermission, tenant } from '../../middleware/security.js';
 import * as logo from './logo.service.js';
 import * as orgs from './organizations.service.js';
+import * as signature from './signature.service.js';
 
 export function organizationRouter(deps: Deps): Router {
   const r = Router();
@@ -49,10 +51,31 @@ export function organizationRouter(deps: Deps): Router {
     res.status(201).json({ data: await orgs.inviteMember(deps, tenant(req), input, requestMeta(req)) });
   });
 
-  r.patch('/members/:memberId', requirePermission('users.manage'), async (req, res) => {
+  // Role/status need users.manage; a designation can also be set by the member themself (checked in the service).
+  r.patch('/members/:memberId', async (req, res) => {
     const memberId = parse(uuidSchema, req.params.memberId);
     const input = parse(updateMemberSchema, req.body);
     res.json({ data: await orgs.updateMember(deps, tenant(req), memberId, input, requestMeta(req)) });
+  });
+
+  // Scanned signature: a member manages their own, users.manage for anyone's (checked in the service).
+  r.post('/members/:memberId/signature/uploads', async (req, res) => {
+    const input = parse(startSignatureUploadSchema, req.body);
+    const memberId = parse(uuidSchema, req.params.memberId);
+    res.status(201).set('Cache-Control', 'no-store').json({ data: await signature.startSignatureUpload(deps, tenant(req), memberId, input.contentType) });
+  });
+  r.post('/members/:memberId/signature/uploads/:uploadId/complete', async (req, res) => {
+    parse(completeLogoUploadSchema, req.body ?? {});
+    const memberId = parse(uuidSchema, req.params.memberId);
+    const uploadId = parse(uuidSchema, req.params.uploadId);
+    res.json({ data: await signature.completeSignatureUpload(deps, tenant(req), memberId, uploadId, requestMeta(req)) });
+  });
+  r.delete('/members/:memberId/signature', async (req, res) => {
+    res.json({ data: await signature.removeSignature(deps, tenant(req), parse(uuidSchema, req.params.memberId), requestMeta(req)) });
+  });
+  r.get('/members/:memberId/signature', async (req, res) => {
+    const file = await signature.readSignature(deps, tenant(req), parse(uuidSchema, req.params.memberId));
+    res.set({ 'Content-Type': file.contentType, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' }).send(file.bytes);
   });
 
   r.delete('/members/:memberId', requirePermission('users.manage'), async (req, res) => {

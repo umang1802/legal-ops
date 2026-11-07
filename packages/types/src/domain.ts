@@ -1,6 +1,8 @@
 /** Enum values mirror the CHECK constraints in packages/db/migrations/0001_init.sql. */
 
 export const CLIENT_TYPES = ['person', 'company'] as const;
+export const CLIENT_SALUTATIONS = ['Mr', 'Ms', 'Mrs', 'Dr', 'Adv', 'M/s'] as const;
+export type ClientSalutation = (typeof CLIENT_SALUTATIONS)[number];
 export type ClientType = (typeof CLIENT_TYPES)[number];
 export const CLIENT_STATUSES = ['active', 'inactive', 'archived'] as const;
 export type ClientStatus = (typeof CLIENT_STATUSES)[number];

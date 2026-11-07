@@ -5,6 +5,8 @@ import {
   Badge,
   Button,
   Card,
+  CardBody,
+  CardHeader,
   EmptyState,
   PageHeader,
   SelectField,
@@ -14,7 +16,7 @@ import {
 } from '@legalops/ui';
 import { inviteMemberSchema } from '@legalops/validation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { UserPlus, Users } from 'lucide-react';
+import { ChevronDown, UserPlus, Users } from 'lucide-react';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import type { z } from 'zod';
@@ -22,6 +24,7 @@ import { api, ApiError, applyFieldErrors } from '../../lib/api.js';
 import { canAct, useSession } from '../../lib/auth.js';
 import { initials } from '../../lib/format.js';
 import { MEMBERS_KEY } from '../../lib/hooks.js';
+import { SignatureCard } from './SignatureCard.js';
 
 const roleOptions = (allowOwner: boolean) =>
   ROLES.filter((r) => allowOwner || r !== 'owner').map((r) => ({ value: r, label: ROLE_LABELS[r] }));
@@ -34,6 +37,8 @@ export function MembersPage() {
     queryKey: MEMBERS_KEY,
     queryFn: () => api.get<MemberDto[]>('/organization/members'),
   });
+
+  const mine = members.data?.find((m) => m.userId === me.user.id && m.status === 'active');
 
   return (
     <>
@@ -57,6 +62,15 @@ export function MembersPage() {
             finance see every matter.
           </Alert>
         </div>
+      ) : null}
+
+      {mine ? (
+        <Card className="mb-4">
+          <CardHeader title="My signature" description="Your designation and scanned signature, used when you sign invoices." />
+          <CardBody>
+            <SignatureCard key={mine.id} member={mine} />
+          </CardBody>
+        </Card>
       ) : null}
 
       {members.isPending ? (
@@ -105,6 +119,7 @@ function MemberRow({
 }) {
   const qc = useQueryClient();
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [showSignature, setShowSignature] = useState(false);
   const update = useMutation({
     mutationFn: (body: { role?: Role; status?: 'active' | 'suspended' }) =>
       api.patch<MemberDto>(`/organization/members/${member.id}`, body),
@@ -121,7 +136,7 @@ function MemberRow({
   const error = update.error ?? remove.error;
 
   return (
-    <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:px-5">
+    <div className="flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center sm:px-5">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <div className="grid size-10 shrink-0 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-800">
           {initials(member.firstName, member.lastName)}
@@ -131,6 +146,7 @@ function MemberRow({
             {member.firstName} {member.lastName} {isSelf ? <span className="text-muted">(you)</span> : null}
           </p>
           <p className="truncate text-sm text-muted">{member.email}</p>
+          <p className="truncate text-xs text-muted">{member.designation}</p>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2 sm:justify-end">
@@ -153,6 +169,15 @@ function MemberRow({
               </select>
             </label>
             <Button
+              variant="ghost"
+              size="sm"
+              aria-expanded={showSignature}
+              icon={<ChevronDown className={`size-4 transition-transform ${showSignature ? 'rotate-180' : ''}`} />}
+              onClick={() => setShowSignature((v) => !v)}
+            >
+              Signature
+            </Button>
+            <Button
               variant="secondary"
               size="sm"
               loading={update.isPending}
@@ -173,6 +198,11 @@ function MemberRow({
           <Badge>{ROLE_LABELS[member.role]}</Badge>
         )}
       </div>
+      {editable && showSignature ? (
+        <div className="sm:basis-full">
+          <SignatureCard member={member} />
+        </div>
+      ) : null}
       {error ? (
         <p className="text-sm text-danger-700 sm:basis-full">
           {error instanceof ApiError ? error.message : 'Update failed.'}

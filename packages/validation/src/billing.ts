@@ -50,7 +50,34 @@ export const invoiceItemSchema = z
   })
   .strict();
 
-const invoiceBody = {
+export const instalmentInputSchema = z.object({ amount: positiveMoneySchema, dueDate: isoDate }).strict();
+export type InstalmentInput = z.input<typeof instalmentInputSchema>;
+
+/** Dated parts of one invoice. The sum = total check is server-side, because the total is computed there. */
+const instalmentsSchema = z.array(instalmentInputSchema).min(2).max(24).optional();
+/** On update/revise: absent = keep the schedule, [] = clear it, 2–24 = replace it. */
+const instalmentsPatchSchema = z
+  .array(instalmentInputSchema)
+  .max(24)
+  .refine((v) => v.length !== 1, { error: 'Use at least 2 instalments, or none' })
+  .optional();
+
+type WithInstalments = { instalments?: { dueDate: string }[] | undefined };
+const instalmentsIncreasing = (v: WithInstalments, ctx: z.core.$RefinementCtx) => {
+  const list = v.instalments;
+  if (!list) return;
+  for (let i = 1; i < list.length; i++) {
+    if (list[i]!.dueDate <= list[i - 1]!.dueDate) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['instalments', i, 'dueDate'],
+        message: 'Instalment due dates must be in increasing order',
+      });
+    }
+  }
+};
+
+const invoiceBody = (instalments: typeof instalmentsSchema | typeof instalmentsPatchSchema) => ({
   issueDate: nullableDate,
   dueDate: nullableDate,
   notes: nullableText(5000),
@@ -66,25 +93,42 @@ const invoiceBody = {
     .transform((v) => (v === '' ? null : v))
     .refine((v) => v == null || /^\d{2}$/.test(v), { error: '2-digit state code' }),
   items: z.array(invoiceItemSchema).min(1, { error: 'Add at least one item' }).max(100),
-};
+  instalments,
+});
 
 const datesOrdered = (v: { issueDate?: string | null | undefined; dueDate?: string | null | undefined }) =>
   !v.issueDate || !v.dueDate || v.dueDate >= v.issueDate;
 
 export const createInvoiceSchema = z
-  .object({ matterId: uuidSchema, ...invoiceBody, issue: z.boolean().default(false) })
+  .object({ matterId: uuidSchema, ...invoiceBody(instalmentsSchema), issue: z.boolean().default(false) })
   .strict()
-  .refine(datesOrdered, { path: ['dueDate'], error: 'Due date cannot be before the issue date' });
+  .refine(datesOrdered, { path: ['dueDate'], error: 'Due date cannot be before the issue date' })
+  .superRefine(instalmentsIncreasing);
 export type CreateInvoiceInput = z.input<typeof createInvoiceSchema>;
 
 export const updateInvoiceSchema = z
-  .object(invoiceBody)
+  .object(invoiceBody(instalmentsPatchSchema))
   .strict()
-  .refine(datesOrdered, { path: ['dueDate'], error: 'Due date cannot be before the issue date' });
+  .refine(datesOrdered, { path: ['dueDate'], error: 'Due date cannot be before the issue date' })
+  .superRefine(instalmentsIncreasing);
 export type UpdateInvoiceInput = z.input<typeof updateInvoiceSchema>;
 
+/** Simple-mode revision of an issued invoice: the update body plus whether to email the client the new copy. */
+export const reviseInvoiceSchema = z
+  .object({ ...invoiceBody(instalmentsPatchSchema), notifyClient: z.boolean().default(false) })
+  .strict()
+  .refine(datesOrdered, { path: ['dueDate'], error: 'Due date cannot be before the issue date' })
+  .superRefine(instalmentsIncreasing);
+export type ReviseInvoiceInput = z.input<typeof reviseInvoiceSchema>;
+
 export const issueInvoiceSchema = z
-  .object({ issueDate: isoDate.optional(), dueDate: isoDate.optional() })
+  .object({
+    issueDate: isoDate.optional(),
+    dueDate: isoDate.optional(),
+    sendToClient: z.boolean().default(true),
+    signatoryUserId: uuidSchema.optional(),
+    signWithImage: z.boolean().default(false),
+  })
   .strict()
   .refine(datesOrdered, { path: ['dueDate'], error: 'Due date cannot be before the issue date' });
 

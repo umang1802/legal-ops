@@ -1,11 +1,15 @@
 import type { FeatureKey, NotifyRecipient, WorkflowAction, WorkflowCondition, WorkflowTiming, WorkflowTrigger } from '@legalops/types';
+import { toPaise } from '@legalops/validation';
 import { query, queryOne, withTransaction, type Db } from '../../db/pool.js';
 import { sql } from '../../db/sql.js';
 import type { Deps } from '../../deps.js';
 import type { TenantContext } from '../../http/context.js';
+import { instalmentStatus } from '../billing/instalments.js';
 import { loadEnabledFeatures } from '../features/features.service.js';
 import { buildContext, flatten, type ContextRefs, type TemplateContext } from '../notifications/context.js';
 import { createNotification, type Recipient } from '../notifications/notifications.service.js';
+import { ensureInstalmentLink } from '../online-payments/payment-links.service.js';
+import { loadZohoPay } from '../online-payments/zohopay-config.service.js';
 import { createTaskInTx } from '../tasks/tasks.service.js';
 import { addTimelineEvent } from '../timeline/timeline.service.js';
 
@@ -43,6 +47,7 @@ export function targetOf(event: Pick<OutboxEvent, 'event_type' | 'payload' | 'ag
     case 'HEARING_CANCELLED':
       return { type: 'hearing', id: p.hearingId ?? event.aggregate_id, refs: { hearingId: p.hearingId ?? event.aggregate_id } };
     case 'INVOICE_CREATED':
+    case 'INVOICE_REVISED':
     case 'INVOICE_PAID':
     case 'INVOICE_VOIDED':
       return { type: 'invoice', id: p.invoiceId ?? event.aggregate_id, refs: { invoiceId: p.invoiceId ?? event.aggregate_id } };
@@ -98,9 +103,12 @@ export function anchorDate(timing: WorkflowTiming, context: TemplateContext): st
     case 'hearing.date':
       return context.raw.hearing?.scheduled_date ?? null;
     case 'invoice.due_date':
-      return context.raw.invoice?.due_date ?? null;
+      // Planned per instalment, an invoice reminder is timed against that instalment's due date.
+      return context.raw.instalment?.due_date ?? context.raw.invoice?.due_date ?? null;
     case 'task.due_date':
       return context.raw.task?.due_date ?? null;
+    case 'instalment.due_date':
+      return context.raw.instalment?.due_date ?? null;
   }
 }
 
@@ -128,6 +136,27 @@ async function cancelPending(db: Db, organizationId: string, targetType: string,
 }
 
 /**
+ * After a revision: cancels pending date-relative "invoice created" actions whose anchor no longer holds. For the
+ * invoice itself, when its due date moved or it now has a schedule (then reminders are per instalment); for an
+ * instalment, when its due date moved or it was removed. Actions whose date is unchanged keep running as planned.
+ */
+async function cancelMovedInvoicePlans(db: Db, organizationId: string, invoiceId: string) {
+  await query(
+    db,
+    sql`UPDATE scheduled_actions sa SET status = 'cancelled', cancelled_at = now(), cancel_reason = 'Invoice revised'
+        WHERE sa.organization_id = ${organizationId} AND sa.status = 'scheduled' AND sa.payload->>'anchor' IS NOT NULL
+          AND sa.workflow_id IN (SELECT id FROM workflows WHERE organization_id = ${organizationId} AND trigger_type = 'INVOICE_CREATED')
+          AND (
+            (sa.target_type = 'invoice' AND sa.target_id = ${invoiceId}
+              AND (EXISTS (SELECT 1 FROM invoice_instalments ii WHERE ii.invoice_id = ${invoiceId})
+                   OR sa.payload->>'anchor' IS DISTINCT FROM (SELECT i.due_date::text FROM invoices i WHERE i.id = ${invoiceId})))
+            OR (sa.target_type = 'instalment' AND sa.payload->'refs'->>'invoiceId' = ${invoiceId}::text
+              AND sa.payload->>'anchor' IS DISTINCT FROM (SELECT ii.due_date::text FROM invoice_instalments ii WHERE ii.id = sa.target_id))
+          )`,
+  );
+}
+
+/**
  * Plans every active workflow for an event (PRD §9/§10). Writes scheduled_actions only; nothing is
  * sent here. Safe to replay: idempotency keys include workflow, action, target and anchor date.
  */
@@ -135,15 +164,37 @@ export async function planForEvent(deps: Deps, db: Db, event: OutboxEvent, now: 
   const target = targetOf(event);
   if (!target) return 0;
   const org = event.organization_id;
+  // "Issue now, send later": nothing is emailed or scheduled until the invoice is sent.
+  if (event.event_type === 'INVOICE_CREATED' && event.payload.sendToClient === false) return 0;
 
   // Changes that invalidate earlier plans.
   if (event.event_type === 'HEARING_CHANGED') await cancelPending(db, org, 'hearing', target.id, 'Hearing rescheduled', ['HEARING_SCHEDULED']);
   if (event.event_type === 'HEARING_CANCELLED' || event.event_type === 'HEARING_COMPLETED') await cancelPending(db, org, 'hearing', target.id, `Hearing ${event.event_type === 'HEARING_CANCELLED' ? 'cancelled' : 'completed'}`, ['HEARING_SCHEDULED']);
-  if (event.event_type === 'INVOICE_PAID' || event.event_type === 'INVOICE_VOIDED') await cancelPending(db, org, 'invoice', target.id, event.event_type === 'INVOICE_PAID' ? 'Invoice paid' : 'Invoice voided', ['INVOICE_CREATED']);
+  if (event.event_type === 'INVOICE_PAID' || event.event_type === 'INVOICE_VOIDED') {
+    const reason = event.event_type === 'INVOICE_PAID' ? 'Invoice paid' : 'Invoice voided';
+    await cancelPending(db, org, 'invoice', target.id, reason, ['INVOICE_CREATED']);
+    for (const ii of await query<{ id: string }>(db, sql`SELECT id FROM invoice_instalments WHERE invoice_id = ${target.id}`)) {
+      await cancelPending(db, org, 'instalment', ii.id, reason, ['INVOICE_CREATED']);
+    }
+  }
   if (event.event_type === 'TASK_COMPLETED') await cancelPending(db, org, 'task', target.id, 'Task completed', ['TASK_CREATED']);
+  if (event.event_type === 'INVOICE_REVISED') {
+    await cancelMovedInvoicePlans(db, org, target.id);
+    // Nothing was planned for an invoice that was never sent, so there is nothing to re-plan either.
+    // Nor is anything reminded on an invoice that is still fully settled after the revision.
+    const open = await queryOne(
+      db,
+      sql`SELECT 1 FROM invoices i JOIN v_invoice_balances b ON b.invoice_id = i.id
+          WHERE i.id = ${target.id} AND i.status = 'issued' AND i.sent_at IS NOT NULL AND b.amount_due > 0`,
+    );
+    if (!open) return 0;
+  }
 
-  // A rescheduled hearing re-plans the "hearing scheduled" workflows against the new date.
-  const trigger = (event.event_type === 'HEARING_CHANGED' ? 'HEARING_SCHEDULED' : event.event_type) as WorkflowTrigger;
+  // A rescheduled hearing re-plans the "hearing scheduled" workflows against the new date; a revised invoice re-plans
+  // its date-relative "invoice created" workflows (keys of unchanged dates already exist, so nothing is duplicated).
+  const trigger = (
+    event.event_type === 'HEARING_CHANGED' ? 'HEARING_SCHEDULED' : event.event_type === 'INVOICE_REVISED' ? 'INVOICE_CREATED' : event.event_type
+  ) as WorkflowTrigger;
   const workflows = (
     await query<WorkflowRow>(
       db,
@@ -152,26 +203,54 @@ export async function planForEvent(deps: Deps, db: Db, event: OutboxEvent, now: 
   ).filter((wf) => !onlyWorkflowIds || onlyWorkflowIds.includes(wf.id));
   if (workflows.length === 0) return 0;
 
-  const context = await buildContext(db, org, { ...target.refs, ...refsFromPayload(event.payload) }, now, deps.env.APP_URL);
-  const flat = { ...flatten(context.vars), ...payloadFacts(event) };
+  const baseRefs: ContextRefs = { ...target.refs, ...refsFromPayload(event.payload) };
+  type Unit = { type: string; id: string; refs: ContextRefs; context: TemplateContext; flat: Record<string, unknown> };
+  const unitFor = async (type: string, id: string, refs: ContextRefs): Promise<Unit> => {
+    const context = await buildContext(db, org, refs, now, deps.env.APP_URL);
+    return { type, id, refs, context, flat: { ...flatten(context.vars), ...payloadFacts(event) } };
+  };
+  const whole = await unitFor(target.type, target.id, baseRefs);
+  // An invoice with instalments has its due-date workflows planned once per instalment (target type `instalment`).
+  const instalmentIds =
+    target.type === 'invoice'
+      ? (await query<{ id: string }>(db, sql`SELECT id FROM invoice_instalments WHERE invoice_id = ${target.id} AND organization_id = ${org} ORDER BY seq`)).map((r) => r.id)
+      : [];
+  let perInstalment: Unit[] | null = null;
   let planned = 0;
+  // A revision brings back a plan it (or a payment) cancelled earlier when that same plan holds again and is still in
+  // the future: e.g. a due date moved away and back, or a fully paid invoice revised upward.
+  const revived = event.event_type === 'INVOICE_REVISED';
   for (const wf of workflows) {
-    if (!conditionsPass(wf.conditions, flat)) continue;
-    const anchor = anchorDate(wf.trigger_config, context);
-    const runAt = await computeRunAt(db, org, wf.trigger_config, anchor, now);
-    if (!runAt) continue;
-    if (wf.trigger_config.timing === 'relative' && runAt.getTime() < now.getTime() - STALE_GRACE_MS) continue;
-    for (const [i, action] of wf.actions.entries()) {
-      const rows = await query(
-        db,
-        sql`INSERT INTO scheduled_actions (organization_id, workflow_id, action_index, action_type, target_type, target_id, source_event_id,
-                                           idempotency_key, run_at, payload)
-            VALUES (${org}, ${wf.id}, ${i}, ${action.type}, ${target.type}, ${target.id}, ${event.id},
-                    ${`${wf.id}:${i}:${target.type}:${target.id}:${anchor ?? event.id}`}, ${runAt.toISOString()},
-                    ${JSON.stringify({ action, anchor, refs: { ...target.refs, ...refsFromPayload(event.payload) }, eventType: event.event_type })})
-            ON CONFLICT (idempotency_key) DO NOTHING RETURNING id`,
-      );
-      planned += rows.length;
+    const t = wf.trigger_config;
+    // A revision never re-sends the invoice email or other immediate actions; nor does an invoice imported from another
+    // app (it was sent there already): only its future, date-relative reminders and instalment links are planned.
+    if ((event.event_type === 'INVOICE_REVISED' || event.payload.imported === true) && t.timing !== 'relative') continue;
+    const byInstalment = instalmentIds.length > 0 && t.timing === 'relative' && (t.anchor === 'invoice.due_date' || t.anchor === 'instalment.due_date');
+    if (byInstalment) perInstalment ??= await Promise.all(instalmentIds.map((id) => unitFor('instalment', id, { ...baseRefs, instalmentId: id })));
+    for (const u of byInstalment ? perInstalment! : [whole]) {
+      if (!conditionsPass(wf.conditions, u.flat)) continue;
+      const anchor = anchorDate(t, u.context);
+      const runAt = await computeRunAt(db, org, t, anchor, now);
+      if (!runAt) continue;
+      if (t.timing === 'relative' && runAt.getTime() < now.getTime() - STALE_GRACE_MS) continue;
+      for (const [i, action] of wf.actions.entries()) {
+        const rows = await query(
+          db,
+          sql`INSERT INTO scheduled_actions (organization_id, workflow_id, action_index, action_type, target_type, target_id, source_event_id,
+                                             idempotency_key, run_at, payload)
+              VALUES (${org}, ${wf.id}, ${i}, ${action.type}, ${u.type}, ${u.id}, ${event.id},
+                      ${`${wf.id}:${i}:${u.type}:${u.id}:${anchor ?? event.id}`}, ${runAt.toISOString()},
+                      ${JSON.stringify({ action, anchor, refs: u.refs, eventType: event.event_type })})
+              ON CONFLICT (idempotency_key) DO ${
+                revived
+                  ? sql`UPDATE SET status = 'scheduled', cancelled_at = NULL, cancel_reason = NULL, result = NULL, last_error = NULL,
+                          attempts = 0, run_at = EXCLUDED.run_at, payload = EXCLUDED.payload, source_event_id = EXCLUDED.source_event_id
+                        WHERE scheduled_actions.status = 'cancelled' AND EXCLUDED.run_at > ${now.toISOString()}::timestamptz`
+                  : sql`NOTHING`
+              } RETURNING id`,
+        );
+        planned += rows.length;
+      }
     }
   }
   return planned;
@@ -252,6 +331,8 @@ export async function requeueStuckActions(db: Db, olderThanMinutes = 10): Promis
 
 type ActionPayload = { action: WorkflowAction; anchor: string | null; refs: ContextRefs; eventType: string };
 
+const INVOICE_PLAN_EVENTS = new Set(['INVOICE_CREATED', 'INVOICE_REVISED']);
+
 /** Is the target still in the state this action was planned for? Stale reminders are skipped, not sent. */
 function stillValid(sa: { target_type: string }, payload: ActionPayload, context: TemplateContext): string | null {
   const relative = payload.anchor !== null;
@@ -260,13 +341,22 @@ function stillValid(sa: { target_type: string }, payload: ActionPayload, context
     if (!h || h.status !== 'scheduled') return 'Hearing is no longer scheduled';
     if (relative && h.scheduled_date !== payload.anchor) return 'Hearing date changed';
   }
-  if (sa.target_type === 'invoice' && payload.eventType === 'INVOICE_CREATED') {
+  if (sa.target_type === 'invoice' && INVOICE_PLAN_EVENTS.has(payload.eventType)) {
     const i = context.raw.invoice;
     if (!i || i.status !== 'issued') return 'Invoice is no longer open';
     if (relative) {
       if (Number(i.amount_due) <= 0) return 'Invoice already paid';
       if (i.due_date !== payload.anchor) return 'Due date changed';
     }
+  }
+  if (sa.target_type === 'instalment' && INVOICE_PLAN_EVENTS.has(payload.eventType)) {
+    const i = context.raw.invoice;
+    if (!i || i.status !== 'issued') return 'Invoice is no longer open';
+    if (Number(i.amount_due) <= 0) return 'Invoice already paid';
+    const ii = context.raw.instalment;
+    if (!ii) return 'Instalment no longer exists';
+    if (relative && ii.due_date !== payload.anchor) return 'Due date changed';
+    if (toPaise(ii.remaining) <= 0) return 'Instalment already paid';
   }
   if (sa.target_type === 'task' && payload.eventType === 'TASK_CREATED' && relative) {
     const t = context.raw.task;
@@ -304,6 +394,7 @@ async function resolveRecipients(db: Db, organizationId: string, who: NotifyReci
  * notifications and tasks carry keys derived from the action id, so a re-run creates nothing new.
  */
 export async function executeScheduledAction(deps: Deps, id: string, now: Date): Promise<'done' | 'skipped' | 'cancelled' | 'not_ready'> {
+  const linkedInstalment = await refreshInstalmentLink(deps, id, now);
   return withTransaction(deps.pool, async (tx) => {
     const sa = await queryOne<{ id: string; organization_id: string; workflow_id: string; target_type: string; target_id: string; status: string; payload: ActionPayload; source_event_id: string | null }>(
       tx,
@@ -346,6 +437,13 @@ export async function executeScheduledAction(deps: Deps, id: string, now: Date):
     const actor = await systemActor(tx, sa.organization_id, wf.created_by);
     switch (action.type) {
       case 'notify': {
+        // Never email a payment-link message without a link for what is still owed. Without an enabled gateway there
+        // is nothing to send (skipped); with one, a missing link means Zoho failed, and since actions have no retry
+        // it fails visibly.
+        if (action.templateKey === 'instalment_payment_link' && !context.vars.links?.pay) {
+          if (!(await loadZohoPay(deps, tx, sa.organization_id))?.enabled) return finish('skipped', { reason: 'Online payments not enabled' });
+          throw new Error(`No payment link for the amount still owed on instalment ${context.raw.instalment?.seq ?? '?'}: Zoho could not be reached`);
+        }
         const recipients = await resolveRecipients(tx, sa.organization_id, action.recipient, context);
         const created: string[] = [];
         for (const r of recipients) {
@@ -362,6 +460,9 @@ export async function executeScheduledAction(deps: Deps, id: string, now: Date):
             idempotencyKey: `${sa.id}:${r.key}`,
           });
           created.push(n.id);
+          if (linkedInstalment && action.templateKey === 'instalment_payment_link' && n.created && n.status === 'queued') {
+            await query(tx, sql`UPDATE invoice_instalments SET emailed_at = now() WHERE id = ${linkedInstalment}`);
+          }
         }
         return finish('done', { notifications: created, recipients: recipients.length });
       }
@@ -403,6 +504,42 @@ export async function executeScheduledAction(deps: Deps, id: string, now: Date):
       }
     }
   });
+}
+
+const LINK_TEMPLATES = new Set(['instalment_payment_link', 'invoice_issued']);
+
+/**
+ * Before an email that carries an instalment's payment link is rendered, makes sure that link exists for what is
+ * still owed (Zoho is called outside the action's transaction). `instalment_payment_link` uses the action's
+ * instalment; `invoice_issued` on an instalment invoice uses the first unpaid one. Returns the instalment id, if any.
+ * A Zoho failure doesn't hold the email back: it goes without a link.
+ */
+async function refreshInstalmentLink(deps: Deps, id: string, now: Date): Promise<string | null> {
+  const sa = await queryOne<{ organization_id: string; payload: ActionPayload; created_by: string | null }>(
+    deps.pool,
+    sql`SELECT sa.organization_id, sa.payload, w.created_by FROM scheduled_actions sa JOIN workflows w ON w.id = sa.workflow_id
+        WHERE sa.id = ${id} AND sa.status IN ('queued', 'scheduled') AND sa.run_at <= ${now.toISOString()}`,
+  );
+  const action = sa?.payload.action;
+  if (!sa || action?.type !== 'notify' || !LINK_TEMPLATES.has(action.templateKey)) return null;
+  const refs = sa.payload.refs;
+  let instalmentId = refs.instalmentId ?? null;
+  if (!instalmentId && refs.invoiceId) {
+    const today = (await queryOne<{ d: string }>(
+      deps.pool,
+      sql`SELECT ((${now.toISOString()}::timestamptz AT TIME ZONE timezone)::date)::text AS d FROM organizations WHERE id = ${sa.organization_id}`,
+    ))!.d;
+    instalmentId = (await instalmentStatus(deps.pool, refs.invoiceId, today)).find((i) => toPaise(i.remaining) > 0)?.id ?? null;
+  }
+  if (!instalmentId) return null;
+  try {
+    // payment_links.created_by is required: the link is made as the workflow's author (or the first owner).
+    const actor = await systemActor(deps.pool, sa.organization_id, sa.created_by);
+    await ensureInstalmentLink(deps, sa.organization_id, instalmentId, actor.userId);
+  } catch (err) {
+    deps.log.warn({ err, scheduledActionId: id, instalmentId }, 'instalment payment link could not be refreshed');
+  }
+  return instalmentId;
 }
 
 async function sourcePayload(db: Db, eventId: string | null): Promise<Record<string, unknown> | null> {

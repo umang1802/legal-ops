@@ -67,6 +67,7 @@ export function PayOnlineCard({ invoice, canManage }: { invoice: InvoiceDetailDt
     },
   });
 
+  if (invoice.instalments.length > 0) return null; // each instalment carries its own link
   if (q.isPending || q.isError) return null;
   const { enabled, links } = q.data;
   if (!enabled && links.length === 0) return null;

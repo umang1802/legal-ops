@@ -428,7 +428,7 @@ describe('automations: settings API', () => {
     const { owner, main, today } = await setup();
     const list = await owner.agent.get('/api/v1/workflows');
     expect(list.status).toBe(200);
-    expect(list.body.data).toHaveLength(15);
+    expect(list.body.data).toHaveLength(16);
     const dayBefore = list.body.data.find((w: { systemKey: string }) => w.systemKey === 'hearing_1d_client');
 
     await post(owner, '/hearings', { caseId: main.caseId, scheduledDate: addDays(today, 6) });

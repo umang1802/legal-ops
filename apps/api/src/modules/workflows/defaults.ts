@@ -1,4 +1,4 @@
-import type { WorkflowAction, WorkflowCondition, WorkflowTiming, WorkflowTrigger } from '@legalops/types';
+import type { WorkflowAction, WorkflowAnchor, WorkflowCondition, WorkflowTiming, WorkflowTrigger } from '@legalops/types';
 import { query, queryOne, type Db } from '../../db/pool.js';
 import { sql } from '../../db/sql.js';
 
@@ -12,8 +12,11 @@ type Default = {
   actions: WorkflowAction[];
 };
 
-const rel = (anchor: 'hearing.date' | 'invoice.due_date' | 'task.due_date', offsetDays: number, at: string): WorkflowTiming => ({ timing: 'relative', anchor, offsetDays, at });
+const rel = (anchor: WorkflowAnchor, offsetDays: number, at: string): WorkflowTiming => ({ timing: 'relative', anchor, offsetDays, at });
 const email = (recipient: 'client' | 'lead' | 'matter_team' | 'assignee' | 'owners' | 'finance', templateKey: string): WorkflowAction => ({ type: 'notify', channel: 'email', recipient, templateKey });
+
+/** Instalment invoices get the payment-link email 3 days before each due date instead of this reminder. */
+const INVOICE_DUE_3D_CONDITIONS: WorkflowCondition[] = [{ field: 'instalment.count', operator: 'is_empty' }];
 
 /** PRD §42 default automation recipes. Seeded on, editable and switchable per firm. */
 export const DEFAULT_WORKFLOWS: Default[] = [
@@ -34,7 +37,24 @@ export const DEFAULT_WORKFLOWS: Default[] = [
   },
   { key: 'task_assigned', name: 'Task assigned: email the assignee', description: 'Not sent when you assign a task to yourself.', trigger: 'TASK_CREATED', timing: { timing: 'immediate' }, actions: [email('assignee', 'task_assigned')] },
   { key: 'invoice_issued', name: 'Invoice issued: email it to the client', description: 'Sent as soon as the invoice is issued.', trigger: 'INVOICE_CREATED', timing: { timing: 'immediate' }, actions: [email('client', 'invoice_issued')] },
-  { key: 'invoice_due_3d', name: 'Invoice due in 3 days: reminder', description: 'Skipped automatically if already paid.', trigger: 'INVOICE_CREATED', timing: rel('invoice.due_date', -3, '10:00'), actions: [email('client', 'invoice_reminder')] },
+  {
+    key: 'invoice_due_3d',
+    name: 'Invoice due in 3 days: reminder',
+    description: 'Skipped automatically if already paid. For instalments, the payment-link email goes instead.',
+    trigger: 'INVOICE_CREATED',
+    timing: rel('invoice.due_date', -3, '10:00'),
+    conditions: INVOICE_DUE_3D_CONDITIONS,
+    actions: [email('client', 'invoice_reminder')],
+  },
+  {
+    key: 'instalment_link_3d',
+    name: 'Instalment due in 3 days: send payment link',
+    description: 'For every instalment after the first (which goes with the invoice). Skipped if already paid.',
+    trigger: 'INVOICE_CREATED',
+    timing: rel('instalment.due_date', -3, '10:00'),
+    conditions: [{ field: 'instalment.seq', operator: 'greater_than', value: 1 }],
+    actions: [email('client', 'instalment_payment_link')],
+  },
   { key: 'invoice_due_today', name: 'Invoice due today: reminder', description: 'Skipped automatically if already paid.', trigger: 'INVOICE_CREATED', timing: rel('invoice.due_date', 0, '10:00'), actions: [email('client', 'invoice_reminder')] },
   { key: 'invoice_overdue_3d', name: 'Invoice 3 days overdue: reminder', description: 'Skipped automatically if paid.', trigger: 'INVOICE_CREATED', timing: rel('invoice.due_date', 3, '10:00'), actions: [email('client', 'invoice_reminder')] },
   {
@@ -80,6 +100,15 @@ export async function ensureDefaultsOnce(db: Db, organizationId: string): Promis
   const pending = DEFAULT_WORKFLOWS.filter((d) => !org.keys.includes(d.key));
   if (!pending.length) return [];
   await ensureDefaultWorkflows(db, organizationId, null, pending);
+  // When a firm first receives the instalment link recipe, its existing "due in 3 days" reminder gets the instalment
+  // guard, but only if its conditions are still the original (none): a firm's own conditions are left alone.
+  if (pending.some((d) => d.key === 'instalment_link_3d')) {
+    await query(
+      db,
+      sql`UPDATE workflows SET conditions = ${JSON.stringify(INVOICE_DUE_3D_CONDITIONS)}
+          WHERE organization_id = ${organizationId} AND system_key = 'invoice_due_3d' AND conditions = '[]'::jsonb`,
+    );
+  }
   await query(
     db,
     sql`UPDATE organizations SET settings = jsonb_set(settings, '{seededWorkflowKeys}', ${JSON.stringify([...org.keys, ...pending.map((d) => d.key)])}::jsonb)

@@ -151,8 +151,27 @@ describe('billing: invoice integrity', () => {
     expect((await fin.agent.delete(`/api/v1/invoices/${inv.id}`).set('X-CSRF-Token', fin.csrf)).status).toBe(
       409,
     );
+    // Simple-mode issued invoices are revisable (amounts), but number and issue date stay frozen.
     await expect(
-      pool.query(`UPDATE invoices SET total_amount = 1, subtotal = 1 WHERE id = $1`, [inv.id]),
+      pool.query(`UPDATE invoices SET invoice_number = 'X/1' WHERE id = $1`, [inv.id]),
+    ).rejects.toThrow(/immutable/);
+    await expect(
+      pool.query(`UPDATE invoices SET issue_date = issue_date + 1 WHERE id = $1`, [inv.id]),
+    ).rejects.toThrow(/immutable/);
+    // GST-mode issued invoices keep frozen amounts.
+    const gst = await pool.query(
+      `INSERT INTO invoices (organization_id, client_id, matter_id, tax_mode, subtotal, tax_amount, total_amount,
+         cgst_amount, sgst_amount, status, invoice_number, fiscal_year, issue_date, due_date, issued_at,
+         supplier_gstin, supplier_state_code, place_of_supply)
+       SELECT organization_id, client_id, id, 'gst', 100, 18, 118, 9, 9, 'issued', 'GST/TEST/1', '2026-27',
+              '2026-10-02', '2026-10-15', now(), '07AAAAA0000A1Z5', '07', '07'
+       FROM matters WHERE id = $1 RETURNING id`,
+      [main.matterId],
+    );
+    await expect(
+      pool.query(`UPDATE invoices SET total_amount = 1, subtotal = 1, tax_amount = 0 WHERE id = $1`, [
+        gst.rows[0].id,
+      ]),
     ).rejects.toThrow(/immutable/);
 
     const d = await post(fin, '/invoices', {

@@ -5,6 +5,7 @@ import { sql } from '../../db/sql.js';
 import type { Deps } from '../../deps.js';
 import type { RequestMeta, TenantContext } from '../../http/context.js';
 import { conflict, forbidden, notFound, validationError } from '../../http/errors.js';
+import { allowed } from '../../middleware/security.js';
 import { recordAudit } from '../audit/audit.service.js';
 import { emitEvent } from '../outbox/outbox.service.js';
 
@@ -30,6 +31,15 @@ type OrgRow = {
   gstin: string | null;
   pan: string | null;
   default_send_time: string;
+  registration_label: string | null;
+  registration_value: string | null;
+  bank_account_name: string | null;
+  bank_account_number: string | null;
+  bank_ifsc: string | null;
+  bank_name: string | null;
+  bank_branch: string | null;
+  upi_id: string | null;
+  invoice_number_digits: number;
 };
 
 const toOrgDto = (o: OrgRow): OrganizationDto => ({
@@ -53,6 +63,15 @@ const toOrgDto = (o: OrgRow): OrganizationDto => ({
   gstin: o.gstin,
   pan: o.pan,
   defaultSendTime: o.default_send_time.slice(0, 5),
+  registrationLabel: o.registration_label,
+  registrationValue: o.registration_value,
+  bankAccountName: o.bank_account_name,
+  bankAccountNumber: o.bank_account_number,
+  bankIfsc: o.bank_ifsc,
+  bankName: o.bank_name,
+  bankBranch: o.bank_branch,
+  upiId: o.upi_id,
+  invoiceNumberDigits: o.invoice_number_digits,
 });
 
 const ORG_COLUMNS: Record<keyof UpdateOrganizationInput, string> = {
@@ -73,13 +92,24 @@ const ORG_COLUMNS: Record<keyof UpdateOrganizationInput, string> = {
   gstin: 'gstin',
   pan: 'pan',
   defaultSendTime: 'default_send_time',
+  registrationLabel: 'registration_label',
+  registrationValue: 'registration_value',
+  bankAccountName: 'bank_account_name',
+  bankAccountNumber: 'bank_account_number',
+  bankIfsc: 'bank_ifsc',
+  bankName: 'bank_name',
+  bankBranch: 'bank_branch',
+  upiId: 'upi_id',
+  invoiceNumberDigits: 'invoice_number_digits',
 };
 
 async function loadOrg(db: Db, organizationId: string, lock = false): Promise<OrgRow> {
   const row = await queryOne<OrgRow>(
     db,
     sql`SELECT id, name, logo_id, logo_type, legal_name, email, phone, address, city, state, pincode, state_code, timezone, currency, reminders_enabled, calendar_hide_parties,
-               invoice_prefix, tax_mode, gstin, pan, default_send_time::text
+               invoice_prefix, tax_mode, gstin, pan, default_send_time::text,
+               registration_label, registration_value, bank_account_name, bank_account_number, bank_ifsc, bank_name,
+               bank_branch, upi_id, invoice_number_digits
         FROM organizations WHERE id = ${organizationId} ${lock ? sql`FOR UPDATE` : sql.empty}`,
   );
   if (!row) throw notFound('Organization');
@@ -171,6 +201,8 @@ type MemberRow = {
   role: Role;
   status: MemberDto['status'];
   joined_at: Date | null;
+  designation: string;
+  signature_key: string | null;
 };
 
 const toMemberDto = (m: MemberRow): MemberDto => ({
@@ -182,12 +214,25 @@ const toMemberDto = (m: MemberRow): MemberDto => ({
   role: m.role,
   status: m.status,
   joinedAt: m.joined_at ? m.joined_at.toISOString() : null,
+  designation: m.designation,
+  hasSignature: m.signature_key !== null,
 });
+
+/** One non-removed member of the firm, or null. */
+export async function getMember(db: Db, organizationId: string, memberId: string): Promise<MemberDto | null> {
+  const row = await queryOne<MemberRow>(
+    db,
+    sql`SELECT m.id, m.user_id, u.email, u.first_name, u.last_name, m.role, m.status, m.joined_at, m.designation, m.signature_key
+        FROM organization_members m JOIN users u ON u.id = m.user_id
+        WHERE m.id = ${memberId} AND m.organization_id = ${organizationId} AND m.status <> 'removed'`,
+  );
+  return row ? toMemberDto(row) : null;
+}
 
 export async function listMembers(deps: Deps, ctx: TenantContext): Promise<MemberDto[]> {
   const rows = await query<MemberRow>(
     deps.pool,
-    sql`SELECT m.id, m.user_id, u.email, u.first_name, u.last_name, m.role, m.status, m.joined_at
+    sql`SELECT m.id, m.user_id, u.email, u.first_name, u.last_name, m.role, m.status, m.joined_at, m.designation, m.signature_key
         FROM organization_members m JOIN users u ON u.id = m.user_id
         WHERE m.organization_id = ${ctx.organizationId} AND m.status <> 'removed'
         ORDER BY u.first_name, u.last_name`,
@@ -259,7 +304,7 @@ export async function updateMember(
   deps: Deps,
   ctx: TenantContext,
   memberId: string,
-  input: { role?: Role | undefined; status?: 'active' | 'suspended' | 'removed' | undefined },
+  input: { role?: Role | undefined; status?: 'active' | 'suspended' | 'removed' | undefined; designation?: string | undefined },
   meta: RequestMeta,
 ): Promise<MemberDto> {
   return withTransaction(deps.pool, async (tx) => {
@@ -270,13 +315,17 @@ export async function updateMember(
     );
     const before = await queryOne<MemberRow>(
       tx,
-      sql`SELECT m.id, m.user_id, u.email, u.first_name, u.last_name, m.role, m.status, m.joined_at
+      sql`SELECT m.id, m.user_id, u.email, u.first_name, u.last_name, m.role, m.status, m.joined_at, m.designation, m.signature_key
           FROM organization_members m JOIN users u ON u.id = m.user_id
           WHERE m.id = ${memberId} AND m.organization_id = ${ctx.organizationId} AND m.status <> 'removed'
           FOR UPDATE OF m`,
     );
     if (!before) throw notFound('Member');
-    if (before.user_id === ctx.userId) throw forbidden('You cannot change your own role or access');
+    const touchesAccess = input.role !== undefined || input.status !== undefined;
+    // Role and access changes are for people who manage users; a designation can also be set by its own member.
+    if (touchesAccess && !allowed(ctx, 'users.manage')) throw forbidden();
+    if (input.designation !== undefined && before.user_id !== ctx.userId && !allowed(ctx, 'users.manage')) throw forbidden();
+    if (touchesAccess && before.user_id === ctx.userId) throw forbidden('You cannot change your own role or access');
     if (ctx.role !== 'owner' && (before.role === 'owner' || input.role === 'owner')) {
       throw forbidden('Only an owner can change owner access');
     }
@@ -292,10 +341,11 @@ export async function updateMember(
     const after = await queryOne<MemberRow>(
       tx,
       sql`UPDATE organization_members m
-          SET role = COALESCE(${input.role ?? null}, m.role), status = COALESCE(${input.status ?? null}, m.status)
+          SET role = COALESCE(${input.role ?? null}, m.role), status = COALESCE(${input.status ?? null}, m.status),
+              designation = COALESCE(${input.designation ?? null}, m.designation)
           FROM users u
           WHERE m.id = ${memberId} AND u.id = m.user_id
-          RETURNING m.id, m.user_id, u.email, u.first_name, u.last_name, m.role, m.status, m.joined_at`,
+          RETURNING m.id, m.user_id, u.email, u.first_name, u.last_name, m.role, m.status, m.joined_at, m.designation, m.signature_key`,
     );
     if (input.status === 'removed') {
       // Removed members lose their matter assignments.
@@ -310,8 +360,8 @@ export async function updateMember(
       action: input.status === 'removed' ? 'member.removed' : 'member.updated',
       entityType: 'organization_member',
       entityId: memberId,
-      before: { role: before.role, status: before.status },
-      after: { role: after!.role, status: after!.status },
+      before: { role: before.role, status: before.status, ...(input.designation !== undefined && { designation: before.designation }) },
+      after: { role: after!.role, status: after!.status, ...(input.designation !== undefined && { designation: after!.designation }) },
       meta,
     });
     return toMemberDto(after!);

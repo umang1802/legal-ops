@@ -1,7 +1,9 @@
-import type { OrganizationStatus } from '@legalops/types';
+import type { InstalmentDto, InstalmentStatus, OrganizationStatus } from '@legalops/types';
 import { toPaise } from '@legalops/validation';
+import { escapeHtml } from '../templates/render.js';
 import { queryOne, type Db } from '../../db/pool.js';
 import { sql } from '../../db/sql.js';
+import { instalmentStatus } from '../billing/instalments.js';
 
 export type ContextRefs = {
   clientId?: string | null;
@@ -9,6 +11,7 @@ export type ContextRefs = {
   caseId?: string | null;
   hearingId?: string | null;
   invoiceId?: string | null;
+  instalmentId?: string | null;
   paymentId?: string | null;
   taskId?: string | null;
 };
@@ -20,12 +23,34 @@ export type ContextRaw = {
   today: string;
   hearing?: { status: string; scheduled_date: string };
   invoice?: { status: string; due_date: string | null; amount_due: string; total: string };
+  /** Set when the refs name an instalment (per-instalment reminders and link emails). */
+  instalment?: { seq: number; due_date: string; remaining: string };
   task?: { status: string; due_date: string | null; assignee_id: string | null; created_by: string | null };
   leadUserId: string | null;
   orgStatus: OrganizationStatus;
 };
 
 export type TemplateContext = { vars: Record<string, Record<string, unknown>>; refs: ResolvedRefs; raw: ContextRaw };
+
+type OrgCtxRow = {
+  name: string; email: string | null; phone: string | null; today: string; status: OrganizationStatus;
+  registration_label: string | null; registration_value: string | null; bank_account_name: string | null; bank_account_number: string | null;
+  bank_ifsc: string | null; bank_name: string | null; bank_branch: string | null; upi_id: string | null;
+};
+
+/** Escaped HTML block of the firm's payment details; '' when none are set. Rendered raw by `*_html` variables. */
+function bankDetailsHtml(o: OrgCtxRow): string {
+  const rows: [string, string | null][] = [
+    ['Account name', o.bank_account_name],
+    ['Account number', o.bank_account_number],
+    ['IFSC', o.bank_ifsc],
+    ['Bank', o.bank_name],
+    ['Branch', o.bank_branch],
+    ['UPI', o.upi_id],
+  ];
+  const lines = rows.filter(([, v]) => v).map(([k, v]) => `${k}: <strong>${escapeHtml(v!)}</strong>`);
+  return lines.length ? `<p>${lines.join('<br>')}</p>` : '';
+}
 
 const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2 });
 const money = (s: string | null | undefined) => (s == null ? '' : inr.format(toPaise(s) / 100));
@@ -48,18 +73,82 @@ const clientUpdateText = (h: HearingText) =>
   (h.status === 'adjourned' ? `The hearing on ${dateText(h.scheduled_date)} was adjourned.` : `The hearing on ${dateText(h.scheduled_date)} was held.`);
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
 
+/** "Dear <contact person>" when there is one (no salutation: it belongs to the client, not the person), else "Dear <salutation> <name>". */
+export function clientGreeting({ salutation, contactPerson, name }: { salutation: string | null; contactPerson: string | null; name: string }): string {
+  const person = contactPerson?.trim();
+  if (person) return `Dear ${person}`;
+  return `Dear ${salutation ? `${salutation} ` : ''}${name}`;
+}
+
+const INSTALMENT_LABEL: Record<InstalmentStatus, string> = { paid: 'Paid', part_paid: 'Part paid', due: 'Due', overdue: 'Overdue' };
+const TD = 'border:1px solid #ddd;padding:6px;text-align:left';
+
+/**
+ * What the client owes now and the full schedule, for invoice emails (`invoice.amount_now`, `due_now`, `payment_terms_html`).
+ * The HTML is assembled only from escaped money, date and fixed-label text (the variable is on the raw-HTML allow-list).
+ */
+export function paymentTerms(all: InstalmentDto[], amountDue: string, dueDate: string) {
+  const firstIdx = all.findIndex((x) => toPaise(x.remaining) > 0);
+  if (all.length === 0 || firstIdx < 0) {
+    // No due date: payable on receipt, and no empty "Due by" line.
+    return {
+      amount_now: amountDue,
+      due_now: dueDate || 'on receipt',
+      payment_terms_html: dueDate
+        ? `<p>Amount due: <strong>${escapeHtml(amountDue)}</strong><br>Due by: <strong>${escapeHtml(dueDate)}</strong></p>`
+        : `<p>Amount due: <strong>${escapeHtml(amountDue)}</strong>, payable on receipt</p>`,
+    };
+  }
+  const first = all[firstIdx]!;
+  const amountNow = money(first.remaining);
+  const dueNow = dateText(first.dueDate);
+  const cell = (s: string, bold = false) => `<td style="${TD}">${bold ? `<strong>${escapeHtml(s)}</strong>` : escapeHtml(s)}</td>`;
+  const rows = all
+    .map((x, idx) => `<tr>${cell(String(x.seq))}${cell(dateText(x.dueDate))}${cell(money(x.amount))}${idx === firstIdx ? cell('Due now', true) : cell(INSTALMENT_LABEL[x.status])}</tr>`)
+    .join('');
+  const head = ['#', 'Due date', 'Amount', 'Status'].map((h) => `<th style="${TD}">${h}</th>`).join('');
+  return {
+    amount_now: amountNow,
+    due_now: dueNow,
+    payment_terms_html:
+      `<p>This invoice is payable in ${all.length} instalments. <strong>${escapeHtml(amountNow)}</strong> is due by <strong>${escapeHtml(dueNow)}</strong>.</p>` +
+      `<table style="border-collapse:collapse;font-size:14px"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`,
+  };
+}
+
+/**
+ * `links.pay` plus a ready-made paragraph (`links.pay_html`, '' when there is no link) for templates without conditionals.
+ * Only a link for exactly what is still owed is exposed: a stale one (e.g. its cancel at Zoho failed) is never sent.
+ */
+function setPayLink(vars: TemplateContext['vars'], link: { url: string; amount: string } | null, seq: number, count: number, remaining: string) {
+  if (!link || toPaise(link.amount) !== toPaise(remaining)) return;
+  const url = link.url;
+  vars.links!.pay = url;
+  vars.links!.pay_html = `<p><a href="${escapeHtml(url)}">Pay online</a> (instalment ${seq} of ${count})</p>`;
+}
+
 /**
  * Builds template variables and engine inputs for whatever records an event or action refers to.
  * Links fill in the gaps (hearing → case → matter → client). `now` drives "today", so the dev test
  * clock produces the same phrases ("overdue by 7 days") as real time would.
  */
 export async function buildContext(db: Db, organizationId: string, refs: ContextRefs, now: Date, appUrl: string): Promise<TemplateContext> {
-  const r: ResolvedRefs = { clientId: null, matterId: null, caseId: null, hearingId: null, invoiceId: null, paymentId: null, taskId: null, ...refs };
-  const org = (await queryOne<{ name: string; email: string | null; phone: string | null; today: string; status: OrganizationStatus }>(
+  const r: ResolvedRefs = { clientId: null, matterId: null, caseId: null, hearingId: null, invoiceId: null, instalmentId: null, paymentId: null, taskId: null, ...refs };
+  const org = (await queryOne<OrgCtxRow>(
     db,
-    sql`SELECT name, email, phone, status, ((${now.toISOString()}::timestamptz AT TIME ZONE timezone)::date)::text AS today FROM organizations WHERE id = ${organizationId}`,
+    sql`SELECT name, email, phone, status, registration_label, registration_value, bank_account_name, bank_account_number,
+               bank_ifsc, bank_name, bank_branch, upi_id, ((${now.toISOString()}::timestamptz AT TIME ZONE timezone)::date)::text AS today FROM organizations WHERE id = ${organizationId}`,
   ))!;
-  const vars: TemplateContext['vars'] = { firm: { name: org.name, email: org.email ?? '', phone: org.phone ?? '' }, links: {} };
+  const vars: TemplateContext['vars'] = {
+    firm: {
+      name: org.name,
+      email: org.email ?? '',
+      phone: org.phone ?? '',
+      registration_line: org.registration_value ? `${org.registration_label ? `${org.registration_label}: ` : ''}${org.registration_value}` : '',
+      bank_details_html: bankDetailsHtml(org),
+    },
+    links: {},
+  };
   const raw: ContextRaw = { today: org.today, leadUserId: null, orgStatus: org.status };
   const link = (path: string) => `${appUrl.replace(/\/$/, '')}${path}`;
 
@@ -112,6 +201,38 @@ export async function buildContext(db: Db, organizationId: string, refs: Context
       };
     }
   }
+  // In an instalment's scope, the invoice's due date, balance and reminder wording are the instalment's.
+  let scope: { dueDate: string; remaining: string } | null = null;
+  let all: Awaited<ReturnType<typeof instalmentStatus>> = [];
+  if (r.instalmentId) {
+    const ii = await queryOne<{ invoice_id: string; seq: number; cnt: number }>(
+      db,
+      sql`SELECT ii.invoice_id, ii.seq, (SELECT count(*)::int FROM invoice_instalments x WHERE x.invoice_id = ii.invoice_id) AS cnt
+          FROM invoice_instalments ii WHERE ii.id = ${r.instalmentId} AND ii.organization_id = ${organizationId}`,
+    );
+    if (ii) {
+      r.invoiceId ??= ii.invoice_id;
+      const st = (await instalmentStatus(db, ii.invoice_id, org.today)).find((x) => x.id === r.instalmentId);
+      if (st) {
+        vars.instalment = {
+          number: st.seq,
+          seq: st.seq,
+          count: ii.cnt,
+          amount: money(st.amount),
+          remaining: money(st.remaining),
+          due_date: dateText(st.dueDate),
+        };
+        setPayLink(vars, st.activeLink, st.seq, ii.cnt, st.remaining);
+        raw.instalment = { seq: st.seq, due_date: st.dueDate, remaining: st.remaining };
+        scope = { dueDate: st.dueDate, remaining: st.remaining };
+      }
+    }
+  } else if (r.invoiceId) {
+    // An instalment invoice's own emails carry the link for its first unpaid instalment.
+    all = await instalmentStatus(db, r.invoiceId, org.today);
+    const first = all.find((x) => toPaise(x.remaining) > 0);
+    if (first) setPayLink(vars, first.activeLink, first.seq, all.length, first.remaining);
+  }
   if (r.invoiceId) {
     const i = await queryOne<{ invoice_number: string | null; status: string; total: string; amount_due: string; due_date: string | null; client_id: string; matter_id: string }>(
       db,
@@ -121,18 +242,21 @@ export async function buildContext(db: Db, organizationId: string, refs: Context
     if (i) {
       r.clientId ??= i.client_id;
       r.matterId ??= i.matter_id;
-      const delta = i.due_date ? daysBetween(org.today, i.due_date) : null;
+      const dueDate = scope?.dueDate ?? i.due_date;
+      const amountDue = scope?.remaining ?? i.amount_due;
+      const delta = dueDate ? daysBetween(org.today, dueDate) : null;
       vars.invoice = {
         number: i.invoice_number ?? '',
         total: money(i.total),
-        amount_due: money(i.amount_due),
+        amount_due: money(amountDue),
         total_rupees: toPaise(i.total) / 100,
-        amount_due_rupees: toPaise(i.amount_due) / 100,
-        due_date: dateText(i.due_date),
+        amount_due_rupees: toPaise(amountDue) / 100,
+        due_date: dateText(dueDate),
         days_overdue: delta !== null && delta < 0 ? -delta : 0,
         reminder_phrase:
           delta === null ? 'due' : delta > 1 ? `due in ${delta} days` : delta === 1 ? 'due tomorrow' : delta === 0 ? 'due today' : `overdue by ${-delta} day${delta === -1 ? '' : 's'}`,
       };
+      if (!r.instalmentId) Object.assign(vars.invoice, paymentTerms(all, money(i.amount_due), dateText(i.due_date)));
       vars.links!.invoice = link(`/invoices/${r.invoiceId}`);
       raw.invoice = { status: i.status, due_date: i.due_date, amount_due: i.amount_due, total: i.total };
     }
@@ -215,11 +339,15 @@ export async function buildContext(db: Db, organizationId: string, refs: Context
     }
   }
   if (r.clientId) {
-    const c = await queryOne<{ name: string; client_type: string }>(
+    const c = await queryOne<{ name: string; client_type: string; salutation: string | null; contact_person: string | null }>(
       db,
-      sql`SELECT name, client_type FROM clients WHERE id = ${r.clientId} AND organization_id = ${organizationId}`,
+      sql`SELECT name, client_type, salutation, contact_person FROM clients WHERE id = ${r.clientId} AND organization_id = ${organizationId}`,
     );
-    if (c) vars.client = { name: c.name, client_type: c.client_type };
+    if (c) vars.client = {
+      name: c.name,
+      client_type: c.client_type,
+      greeting: clientGreeting({ salutation: c.salutation, contactPerson: c.contact_person, name: c.name }),
+    };
   }
   return { vars, refs: r, raw };
 }

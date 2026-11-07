@@ -1,7 +1,11 @@
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { signZohoWebhook } from '../src/integrations/zohopay/signature.js';
-import { buildApp, loginAs, pool, practiceFixture, type Session, useDatabase } from './helpers.js';
+import { addDays, buildApp, deps, loginAs, pool, practiceFixture, type Session, useDatabase } from './helpers.js';
+import {
+  ensureInstalmentLink,
+  sendInstalmentNow,
+} from '../src/modules/online-payments/payment-links.service.js';
 import { createPlatformAdmin, platformLogin, type PlatformSession } from './platform-helpers.js';
 
 useDatabase();
@@ -336,5 +340,180 @@ describe('payment links and the Zoho webhook', () => {
     const live = paidEvent('PL1', '5000.00', 3003).replace('"live_mode":false', '"live_mode":true');
     expect((await webhook(live)).body.message).toContain('environment mismatch');
     expect((await pool.query(`SELECT count(*)::int AS n FROM payments`)).rows[0].n).toBe(0);
+  });
+});
+
+describe('instalment payment links and send now', () => {
+  async function instalmentSetup() {
+    const s = await setup();
+    await s.configure();
+    const dates = [addDays(s.today, 10), addDays(s.today, 20), addDays(s.today, 30)];
+    const res = await post(s.fin, '/invoices', {
+      matterId: s.main.matterId,
+      items: [{ description: 'Professional fees', unitPrice: '30000' }],
+      instalments: ['10000', '10000', '10000'].map((amount, i) => ({ amount, dueDate: dates[i] })),
+      issue: true,
+    });
+    if (res.status !== 201) throw new Error(JSON.stringify(res.body));
+    const inv = res.body.data as { id: string; instalments: { id: string; seq: number }[] };
+    const actor = s.uid('finance@a.test');
+    const ensure = (seq: number) =>
+      ensureInstalmentLink(deps, s.firm.orgId, inv.instalments[seq - 1]!.id, actor);
+    const part = (amount: string) =>
+      post(s.fin, '/payments', {
+        clientId: s.clientId,
+        amount,
+        paymentDate: s.today,
+        method: 'upi',
+        allocations: [{ invoiceId: inv.id, amount }],
+      });
+    const ctx = {
+      userId: actor,
+      organizationId: s.firm.orgId,
+      role: 'finance' as const,
+      features: [] as never[],
+    };
+    const meta = { requestId: 'req-1', ip: null, userAgent: null };
+    return { ...s, inv, ensure, part, actor, ctx, meta };
+  }
+  const creates = () => zoho.calls.filter((c) => c.method === 'POST' && /paymentlinks\?/.test(c.url));
+  const cancels = () => zoho.calls.filter((c) => c.url.includes('/cancel'));
+
+  it('ensureInstalmentLink creates a link for the remaining amount', async () => {
+    const { ensure, part, inv } = await instalmentSetup();
+    expect((await part('4000')).status).toBe(201);
+    const link = await ensure(1);
+    expect(link).toMatchObject({ amount: '6000.00', status: 'active', invoiceId: inv.id });
+    expect(creates()).toHaveLength(1);
+    expect(creates()[0]!.body).toMatchObject({ amount: 6000 });
+  });
+
+  it('returns null when nothing is remaining or online payments are off', async () => {
+    const { ensure, part } = await instalmentSetup();
+    await part('10000');
+    expect(await ensure(1)).toBeNull();
+    expect(creates()).toHaveLength(0);
+  });
+
+  it('reuses an active link with the same amount', async () => {
+    const { ensure } = await instalmentSetup();
+    const a = await ensure(2);
+    const b = await ensure(2);
+    expect(b!.id).toBe(a!.id);
+    expect(creates()).toHaveLength(1);
+  });
+
+  it('amount changed → old link cancelled at Zoho, new link created', async () => {
+    const { ensure, part } = await instalmentSetup();
+    const a = await ensure(1);
+    await part('2500');
+    const b = await ensure(1);
+    expect(b!.id).not.toBe(a!.id);
+    expect(b!.amount).toBe('7500.00');
+    expect(cancels()).toHaveLength(1);
+    expect(cancels()[0]!.url).toContain('PL1');
+    expect(creates()).toHaveLength(2);
+    const rows = (await pool.query(`SELECT status FROM payment_links ORDER BY created_at`)).rows;
+    expect(rows.map((r) => r.status)).toEqual(['canceled', 'active']);
+  });
+
+  it('two concurrent ensureInstalmentLink calls → one active row', async () => {
+    const { ensure } = await instalmentSetup();
+    // Hold every Zoho create until both callers are in flight, so both pass the "no open link" check.
+    let waiting = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    vi.stubGlobal('fetch', async (input: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === 'POST' && /paymentlinks\?/.test(String(input))) {
+        if (++waiting === 2) release();
+        await gate;
+      }
+      return zoho.impl(input, init);
+    });
+    const [a, b] = await Promise.all([ensure(3), ensure(3)]);
+    expect(a!.id).toBe(b!.id);
+    // the loser's Zoho link (whichever of PL1/PL2 is not the winner's) was cancelled at Zoho
+    const winnerProvider = (await pool.query(`SELECT provider_link_id FROM payment_links WHERE status = 'active'`))
+      .rows[0].provider_link_id as string;
+    const loser = winnerProvider === 'PL1' ? 'PL2' : 'PL1';
+    expect(creates()).toHaveLength(2);
+    expect(cancels().map((c) => c.url).filter((u) => u.includes(loser))).toHaveLength(1);
+    expect(cancels().some((c) => c.url.includes(winnerProvider))).toBe(false);
+    const rows = (await pool.query(`SELECT status FROM payment_links WHERE status = 'active'`)).rows;
+    expect(rows).toHaveLength(1);
+  });
+
+  it('the whole-invoice link route is refused for an invoice with instalments', async () => {
+    const { fin, inv } = await instalmentSetup();
+    const res = await post(fin, `/invoices/${inv.id}/payment-links`, {});
+    expect(res.status).toBe(409);
+    expect(JSON.stringify(res.body)).toContain("Use the instalment's link");
+  });
+
+  it('send now on a paid instalment → 409', async () => {
+    const { fin, inv, part } = await instalmentSetup();
+    await pool.query(`UPDATE invoices SET sent_at = now() WHERE id = $1`, [inv.id]);
+    await part('10000');
+    const res = await post(fin, `/invoices/${inv.id}/instalments/1/send`);
+    expect(res.status).toBe(409);
+  });
+
+  it('send now needs a sent invoice; then queues the email once and stamps emailed_at', async () => {
+    const { fin, inv, ctx, meta, clientId } = await instalmentSetup();
+    // Issued without sending (issue + send is the default, which stamps sent_at).
+    await pool.query(`UPDATE invoices SET sent_at = NULL WHERE id = $1`, [inv.id]);
+    expect((await post(fin, `/invoices/${inv.id}/instalments/2/send`)).status).toBe(409);
+    await pool.query(`UPDATE clients SET email = 'raj@client.test' WHERE id = $1`, [clientId]);
+    await pool.query(`UPDATE invoices SET sent_at = now() WHERE id = $1`, [inv.id]);
+    const res = await post(fin, `/invoices/${inv.id}/instalments/2/send`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.notificationId).toBeTruthy();
+    const n = (
+      await pool.query(`SELECT status, notification_type, subject, body_html FROM notifications WHERE id = $1`, [
+        res.body.data.notificationId,
+      ])
+    ).rows[0];
+    expect(n).toMatchObject({ notification_type: 'instalment_payment_link' });
+    expect(n.subject).toContain('Instalment 2 of 3');
+    expect(n.body_html).toContain('https://payments.zoho.in/paymentlinks/token1');
+    const at = (await pool.query(`SELECT emailed_at FROM invoice_instalments WHERE seq = 2`)).rows[0];
+    expect(at.emailed_at).not.toBeNull();
+    // the same request replayed makes no second notification
+    const again = await sendInstalmentNow(deps, ctx, inv.id, 2, meta);
+    const again2 = await sendInstalmentNow(deps, ctx, inv.id, 2, meta);
+    expect(again.notificationId).toBe(again2.notificationId);
+  });
+
+  it('webhook payment on an instalment link records the payment and the instalment shows paid', async () => {
+    const { fin, inv, ensure, webhook } = await instalmentSetup();
+    await ensure(1);
+    expect((await webhook(paidEvent('PL1', '10000.00'))).status).toBe(200);
+    const got = (await fin.agent.get(`/api/v1/invoices/${inv.id}`)).body.data;
+    expect(got.instalments.map((i: { status: string }) => i.status)).toEqual(['paid', 'due', 'due']);
+    expect((await pool.query(`SELECT count(*)::int n FROM payments`)).rows[0].n).toBe(1);
+  });
+
+  it('send now with no client email → 409 before any Zoho call or notification', async () => {
+    const { fin, inv } = await instalmentSetup();
+    await pool.query(`UPDATE invoices SET sent_at = now() WHERE id = $1`, [inv.id]);
+    zoho.calls.length = 0;
+    const res = await post(fin, `/invoices/${inv.id}/instalments/1/send`);
+    expect(res.status).toBe(409);
+    expect(JSON.stringify(res.body)).toContain('Client has no email address');
+    expect(zoho.calls).toHaveLength(0);
+    expect((await pool.query(`SELECT count(*)::int n FROM notifications`)).rows[0].n).toBe(0);
+  });
+
+  it('the same request id on two instalments → two notifications', async () => {
+    const { fin, inv, clientId } = await instalmentSetup();
+    await pool.query(`UPDATE clients SET email = 'raj@client.test' WHERE id = $1`, [clientId]);
+    await pool.query(`UPDATE invoices SET sent_at = now() WHERE id = $1`, [inv.id]);
+    const send = (seq: number) =>
+      fin.agent.post(`/api/v1/invoices/${inv.id}/instalments/${seq}/send`).set('X-CSRF-Token', fin.csrf).set('X-Request-Id', 'same-id').send({});
+    const a = await send(1);
+    const b = await send(2);
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(200);
+    expect(a.body.data.notificationId).not.toBe(b.body.data.notificationId);
   });
 });

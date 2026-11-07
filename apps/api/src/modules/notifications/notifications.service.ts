@@ -15,9 +15,12 @@ import { varsForAudience, type Audience } from '../templates/audience.js';
 import { emailLayout, htmlToText, renderTemplate, sanitizeTemplateHtml } from '../templates/render.js';
 import { resolveTemplate } from '../templates/templates.service.js';
 import { addTimelineEvent } from '../timeline/timeline.service.js';
+import { invoicePdfForSending } from '../billing/pdf/invoice-pdf.js';
+import { renderReceiptPdf } from '../billing/pdf/receipt-pdf.js';
+import { loadEnabledFeatures } from '../features/features.service.js';
 import { EmailChannel, type NotificationChannel } from './channels.js';
 import { buildContext, type ContextRefs } from './context.js';
-import { ProviderError } from './providers.js';
+import { ProviderError, type EmailAttachment } from './providers.js';
 import { firmBranding } from '../organizations/organizations.service.js';
 
 export const MAX_ATTEMPTS = 5;
@@ -28,7 +31,28 @@ export type Recipient =
   | { type: 'user'; userId: string }
   | { type: 'external'; email: string; name?: string | null };
 
+/** Stored on the notification row instead of bytes; the PDF is generated when the email is sent. */
+export type NotificationAttachmentRef = { kind: 'invoice_pdf'; invoiceId: string } | { kind: 'receipt_pdf'; paymentId: string };
+
+/** Client emails about one invoice that carry its PDF (and its figures in the rendered text). */
+export const INVOICE_PDF_TEMPLATES: ReadonlySet<string> = new Set(['invoice_issued', 'invoice_updated', 'instalment_payment_link', 'invoice_reminder']);
+const MAX_CC = 5;
+
+/** Case-insensitive dedupe, never repeating the To address. */
+function dedupeCc(list: string[], to: string | null): string[] {
+  const seen = new Set<string>(to ? [to.trim().toLowerCase()] : []);
+  const out: string[] = [];
+  for (const a of list) {
+    const k = a.trim().toLowerCase();
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push(a.trim());
+  }
+  return out.slice(0, MAX_CC);
+}
+
 export type CreateNotificationInput = {
+  attachments?: NotificationAttachmentRef[];
   organizationId: string;
   templateKey: string;
   recipient: Recipient;
@@ -67,11 +91,13 @@ export async function createNotification(db: Db, appUrl: string, input: CreateNo
   let destination: string | null = null;
   let recipientName: string | null = null;
   let skipReason: string | null = null;
+  let cc: string[] = [];
   if (input.recipient.type === 'client') {
-    const c = await queryOne<{ name: string; email: string | null; email_notifications_enabled: boolean }>(
+    const c = await queryOne<{ name: string; email: string | null; email_notifications_enabled: boolean; cc_emails: string[] }>(
       db,
-      sql`SELECT name, email, email_notifications_enabled FROM clients WHERE id = ${input.recipient.clientId}`,
+      sql`SELECT name, email, email_notifications_enabled, cc_emails FROM clients WHERE id = ${input.recipient.clientId}`,
     );
+    cc = dedupeCc(c?.cc_emails ?? [], c?.email ?? null);
     recipientName = c?.name ?? null;
     destination = c?.email ?? null;
     if (c && !c.email_notifications_enabled) skipReason = 'client_opted_out';
@@ -99,13 +125,23 @@ export async function createNotification(db: Db, appUrl: string, input: CreateNo
   const bodyText = template.text_body ? renderTemplate(template.text_body, vars, 'text') : htmlToText(bodyHtml);
   const status: NotificationStatus = skipReason ? 'skipped' : input.requiresApproval && input.recipient.type === 'client' ? 'awaiting_approval' : 'queued';
   const r = context.refs;
+  // Refs only (never bytes). Client-facing invoice/receipt templates get their PDF automatically.
+  const attachments: NotificationAttachmentRef[] =
+    input.attachments ??
+    (input.recipient.type !== 'client'
+      ? []
+      : INVOICE_PDF_TEMPLATES.has(input.templateKey) && r.invoiceId
+        ? [{ kind: 'invoice_pdf', invoiceId: r.invoiceId }]
+        : input.templateKey === 'payment_received' && r.paymentId
+          ? [{ kind: 'receipt_pdf', paymentId: r.paymentId }]
+          : []);
 
   const row = await queryOne<{ id: string }>(
     db,
     sql`INSERT INTO notifications (organization_id, channel, notification_type, recipient_type, recipient_user_id, client_id, matter_id,
                                    invoice_id, hearing_id, task_id, payment_id, template_id, workflow_id, scheduled_action_id,
                                    source_event_id, idempotency_key, destination, subject, body_html, body_text, status, skip_reason,
-                                   scheduled_at, created_by, metadata)
+                                   scheduled_at, created_by, metadata, attachments, cc)
         VALUES (${input.organizationId}, 'email', ${input.templateKey}, ${input.recipient.type},
                 ${input.recipient.type === 'user' ? input.recipient.userId : null},
                 ${input.recipient.type === 'client' ? input.recipient.clientId : r.clientId}, ${r.matterId},
@@ -113,7 +149,8 @@ export async function createNotification(db: Db, appUrl: string, input: CreateNo
                 ${input.scheduledActionId ?? null}, ${input.sourceEventId ?? null}, ${input.idempotencyKey}, ${destination},
                 ${subject}, ${bodyHtml}, ${bodyText}, ${status}, ${skipReason}, ${(input.scheduledAt ?? input.now).toISOString()},
                 ${input.createdBy ?? null},
-                ${JSON.stringify({ recipientName, ...(input.sensitive ? { sensitive: input.sensitive } : {}) })})
+                ${JSON.stringify({ recipientName, ...(input.sensitive ? { sensitive: input.sensitive } : {}) })},
+                ${JSON.stringify(attachments)}::jsonb, ${cc}::text[])
         ON CONFLICT (idempotency_key) DO NOTHING
         RETURNING id`,
   );
@@ -156,11 +193,13 @@ export async function sendNotification(deps: Deps & { channel?: NotificationChan
     recipient_type: string;
     metadata: { recipientName?: string | null; sensitive?: CreateNotificationInput['sensitive'] };
     template_id: string;
+    attachments: NotificationAttachmentRef[];
+    cc: string[];
   }>(
     db,
     sql`UPDATE notifications SET status = 'sending', attempts = attempts + 1
         WHERE id = ${id} AND status = 'queued' AND (scheduled_at IS NULL OR scheduled_at <= ${now.toISOString()})
-        RETURNING organization_id, destination, subject, body_html, body_text, attempts, matter_id, client_id, recipient_type, metadata, template_id`,
+        RETURNING organization_id, destination, subject, body_html, body_text, attempts, matter_id, client_id, recipient_type, metadata, template_id, attachments, cc`,
   );
   if (!n) return 'not_ready';
   const channel = deps.channel ?? new EmailChannel(deps.email);
@@ -179,6 +218,9 @@ export async function sendNotification(deps: Deps & { channel?: NotificationChan
       html = html.split(SENSITIVE_PLACEHOLDER).join(url);
       text = text.split(SENSITIVE_PLACEHOLDER).join(url);
     }
+    // Built now, so a later revision or DSC upload is reflected. If one can't be produced the email is NOT sent without it:
+    // this throws a transient ProviderError and the usual retry/failure path takes over.
+    const attachments = await resolveAttachments(deps, n.organization_id, n.attachments ?? []);
     const result = await channel.deliver({
       destination: n.destination,
       recipientName: n.metadata.recipientName ?? null,
@@ -186,6 +228,10 @@ export async function sendNotification(deps: Deps & { channel?: NotificationChan
       html: emailLayout(html, firm),
       text,
       replyTo: n.recipient_type === 'client' ? firm.email : null,
+      // Clients see who the email is from; staff emails keep the platform sender.
+      fromName: n.recipient_type === 'client' ? `${firm.name} via LexForgeX` : null,
+      ...(n.recipient_type === 'client' && n.cc?.length ? { cc: dedupeCc(n.cc, n.destination) } : {}),
+      ...(attachments.length ? { attachments } : {}),
     });
     await withTransaction(db, async (tx) => {
       await query(
@@ -243,6 +289,31 @@ export async function sendNotification(deps: Deps & { channel?: NotificationChan
     });
     return 'failed';
   }
+}
+
+async function resolveAttachments(deps: Deps, organizationId: string, refs: NotificationAttachmentRef[]): Promise<EmailAttachment[]> {
+  const out: EmailAttachment[] = [];
+  for (const ref of refs) {
+    try {
+      if (ref.kind === 'invoice_pdf') {
+        const pdf = await invoicePdfForSending(deps, organizationId, ref.invoiceId);
+        out.push({ filename: pdf.filename, contentType: 'application/pdf', content: pdf.content });
+      } else {
+        const owner = (await queryOne<{ user_id: string }>(
+          deps.pool,
+          sql`SELECT user_id FROM organization_members WHERE organization_id = ${organizationId} AND role = 'owner' ORDER BY joined_at LIMIT 1`,
+        ))?.user_id;
+        if (!owner) throw new Error('firm has no owner');
+        const ctx: TenantContext = { organizationId, userId: owner, role: 'owner', features: await loadEnabledFeatures(deps.pool, organizationId) };
+        const content = await renderReceiptPdf(deps, ctx, ref.paymentId);
+        const num = (await queryOne<{ receipt_number: string }>(deps.pool, sql`SELECT receipt_number FROM payments WHERE id = ${ref.paymentId} AND organization_id = ${organizationId}`))?.receipt_number;
+        out.push({ filename: `Receipt-${(num ?? ref.paymentId).replaceAll('/', '-')}.pdf`, contentType: 'application/pdf', content });
+      }
+    } catch (err) {
+      throw new ProviderError(`Could not attach ${ref.kind === 'invoice_pdf' ? 'invoice' : 'receipt'} PDF: ${(err as Error).message}`, false);
+    }
+  }
+  return out;
 }
 
 /** Due queued notifications, oldest first. The worker enqueues these; tests/dev send them inline. */

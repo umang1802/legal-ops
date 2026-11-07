@@ -1,5 +1,6 @@
 import type {
   CaseStatus,
+  ClientSalutation,
   ClientStatus,
   AgingBucket,
   ClientType,
@@ -15,6 +16,7 @@ import type {
   Priority,
   TaskStatus,
 } from './domain.js';
+import type { PaymentLinkDto } from './online-payments.js';
 
 export type UserRef = { userId: string; firstName: string; lastName: string | null };
 
@@ -34,6 +36,10 @@ export type ClientDto = {
   notes: string | null;
   tags: string[];
   emailNotificationsEnabled: boolean;
+  salutation: ClientSalutation | null;
+  title: string | null;
+  contactPerson: string | null;
+  ccEmails: string[];
   status: ClientStatus;
   createdAt: string;
   updatedAt: string;
@@ -267,7 +273,31 @@ export type InvoiceLineDto = {
   expenseId: string | null;
 };
 
+export type InstalmentStatus = 'paid' | 'part_paid' | 'due' | 'overdue';
+
+export type InstalmentDto = {
+  id: string;
+  seq: number;
+  amount: Money;
+  dueDate: string;
+  paid: Money;
+  remaining: Money;
+  status: InstalmentStatus;
+  emailedAt: string | null;
+  activeLink: PaymentLinkDto | null;
+};
+
 export type InvoiceDetailDto = InvoiceListItemDto & {
+  instalments: InstalmentDto[];
+  /** The signatory snapshot taken when the invoice was issued; null until then. */
+  signatory: { userId: string | null; name: string; designation: string; withImage: boolean } | null;
+  revision: number;
+  revisedAt: string | null;
+  sentAt: string | null;
+  /** The active DSC-signed PDF uploaded by the firm, if any. */
+  signedDocument: { uploadedAt: string; uploadedBy: UserRef | null; sizeBytes: number } | null;
+  /** Simple-mode issued invoices can be revised; GST-mode invoices are immutable. */
+  canRevise: boolean;
   taxMode: 'simple' | 'gst';
   supplierGstin: string | null;
   supplierStateCode: string | null;
