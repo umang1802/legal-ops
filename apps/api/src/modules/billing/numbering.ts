@@ -15,6 +15,7 @@ export async function nextDocumentNumber(
   kind: SequenceKind,
   date: string,
   prefix: string,
+  digits = 6,
 ): Promise<{ number: string; fiscalYear: string }> {
   const fy = fiscalYear(date);
   const row = await queryOne<{ n: string }>(
@@ -25,7 +26,7 @@ export async function nextDocumentNumber(
         DO UPDATE SET next_value = document_sequences.next_value + 1
         RETURNING (next_value - 1)::text AS n`,
   );
-  return { number: `${prefix}/${fy}/${row!.n.padStart(6, '0')}`, fiscalYear: fy };
+  return { number: `${prefix}/${fy}/${row!.n.padStart(digits, '0')}`, fiscalYear: fy };
 }
 
 export const RECEIPT_PREFIX = 'RCPT';

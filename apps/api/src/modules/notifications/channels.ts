@@ -1,4 +1,4 @@
-import type { EmailProvider } from './providers.js';
+import type { EmailAttachment, EmailProvider } from './providers.js';
 
 /**
  * PRD §46: workflows and the notification service talk to channels, never to a provider directly.
@@ -11,6 +11,9 @@ export type ChannelMessage = {
   html: string;
   text: string;
   replyTo: string | null;
+  cc?: string[];
+  attachments?: EmailAttachment[];
+  fromName?: string | null;
 };
 
 export interface NotificationChannel {
@@ -26,6 +29,6 @@ export class EmailChannel implements NotificationChannel {
     return this.email.name;
   }
   deliver(m: ChannelMessage) {
-    return this.email.send({ to: m.destination, toName: m.recipientName, subject: m.subject, html: m.html, text: m.text, replyTo: m.replyTo });
+    return this.email.send({ to: m.destination, toName: m.recipientName, subject: m.subject, html: m.html, text: m.text, replyTo: m.replyTo, cc: m.cc, attachments: m.attachments, fromName: m.fromName ?? null });
   }
 }

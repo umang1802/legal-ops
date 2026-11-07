@@ -111,3 +111,70 @@ Decisions that override or clarify `prd/`. When the PRD and this file disagree, 
 - Firms are created by a platform invite (`status = 'invited'`) and become `active` when the owner accepts. Payment is tracked manually in `platform_notes` (never exposed to firms; audit records only that notes changed).
 - Suspended firms are read-only: one middleware on the firm router (before every sub-router, so new routes are covered by construction) returns `FIRM_SUSPENDED` for writes except logout/switch-organization; the worker records due actions as skipped ("Firm suspended") and never resends them; reactivation also skips anything that fell due during the suspension but was never claimed. Token-based account flows (password reset, email verification, invite acceptance) stay allowed. The web app hides non-read controls through `canAct(me, permission)` in `apps/web/src/lib/auth.ts` (use it instead of `can(me.role, …)` for any UI control) and shows a banner.
 - TOTP enrolment shows the key and an `otpauth://` link; no QR image (deferred).
+
+## D-015 · Instalments: one invoice, several dated parts (2026-11-06)
+
+- An instalment plan is **one invoice** with **2–24 `invoice_instalments`** (`seq`, `amount`, `due_date`). It is never split into several invoices.
+  - The amounts add up exactly to `total_amount`.
+  - Due dates strictly increase.
+  - `invoices.due_date` = the last instalment's date.
+  - An invoice with no rows behaves exactly as before.
+- **Paid per instalment is derived, never stored.** The invoice's active allocations (cash **and TDS**, as D-002) are applied to the instalments in `seq` order: FIFO. Each instalment is `paid`, `part_paid`, `due` or `overdue`. A manual payment therefore always goes to the earliest unpaid instalment. A client who paid a later instalment first is shown as having paid the earlier one.
+- **Payment links.** There is at most one active link per instalment (or per invoice, when there are no instalments). A link is created for the instalment's **remaining** amount. A link whose amount no longer matches is cancelled at Zoho and replaced when the next one is sent. A stale amount is never emailed.
+- **Emails.**
+  - The invoice email carries the schedule and the first unpaid instalment's link.
+  - Every later instalment's link goes 3 days before its due date, at 10:00 firm time. For instalments it replaces the "due in 3 days" reminder.
+  - The other reminders are anchored on each instalment's due date.
+
+## D-016 · In-place revisions for simple-tax invoices only (2026-11-06)
+
+- A **simple-tax** issued invoice can be revised in place. Amounts, items, due date, notes and the instalment schedule can change. The number, issue date, client, matter and tax mode never change. `revision` counts up and `revised_at` is set.
+- The ledger records a revision as an `invoice_revised` delta entry, never as an edit.
+- **GST invoices stay frozen** (API + DB trigger). They are corrected only with a credit note or void (D-011).
+- Paid instalments can't change. An instalment can't go below what was paid on it.
+- After a revision:
+  - payment links with a stale amount are cancelled at Zoho first;
+  - a DSC-signed copy of an older revision is no longer used (the generated PDF goes out instead);
+  - only date-relative reminders whose date moved are re-planned. A revision never re-sends the invoice email; the client gets "invoice updated" only when the firm chooses to send it.
+
+## D-017 · Email attachments are references, resolved at send time (2026-11-06)
+
+- A notification stores **references**, never bytes: `{kind: 'invoice_pdf', invoiceId}` or `{kind: 'receipt_pdf', paymentId}` in `notifications.attachments`.
+  - Client-facing invoice, instalment, reminder and "invoice updated" emails reference the invoice PDF.
+  - "Payment received" references the receipt.
+- The PDF is produced **when the email is sent**. It is the invoice's active DSC-signed copy for its current revision, else the generated `pdf-lib` PDF. A reminder planned weeks ahead therefore carries the invoice as it is on the day it goes out, including any revision.
+- If the PDF can't be produced, the send fails permanently and is visible in the notification log. The email never goes out without its attachment.
+- CC addresses (up to 5 per client) are stored on the notification when it is created.
+
+## D-018 · Vidhimeya import rules (2026-11-06)
+
+One-off import from the old invoicing app (D1 export). Command: `import:vidhimeya` / `dist/import-vidhimeya.js`. Runbook: `docs/runbooks/vidhimeya-billing-cutover.md`.
+
+- **The import is all or nothing.** It runs in one transaction.
+  - It is refused if the firm already has issued invoices, payments or an earlier import.
+  - `--dry-run` rolls back.
+  - A real run whose per-client totals differ from the old app by more than ₹0 also rolls back.
+  - Files (signatures, signed PDFs) are uploaded only after the checks pass.
+- **Old numbers are kept verbatim and the series continues.**
+  - `invoice_prefix` = the most recent invoice's prefix, `invoice_number_digits = 3`.
+  - `document_sequences` = the highest imported number + 1 per FY.
+  - Every prefix found is listed.
+  - An old counter higher than the highest exported number is reported as a gap.
+- **Drafts are imported with their numbers (`prenumbered`).**
+  - They can't be deleted, only issued or voided.
+  - On issue they keep their number and draw nothing; the issue date must stay in that number's FY.
+  - On void they take the number's FY.
+- **Salutation and greeting.** The old `title` (honorific) maps to the `salutation` enum Mr/Ms/Mrs/Dr/Adv/M/s, case-insensitive and without a trailing dot. Anything else maps to none and is reported. The old `salutation` (the greeting word "Dear"/"Respected") is dropped and counted in the report. Greetings are always "Dear {salutation} {name}" (spec §8).
+- **Clients and matters.**
+  - Clients are matched by email, case-insensitive. A matched client only has its empty fields filled.
+  - One matter per client per subject; with no subject, the matter is "Advisory: {client}". The owner leads every matter.
+- **Invoices and payments.**
+  - Sent becomes issued; cancelled becomes void ("Cancelled in previous invoicing app").
+  - One old instalment = no instalment rows.
+  - Payments get RCPT receipts in `paid_on` order. Zoho payments become `other` with provider `zohopay` and the Zoho payment id.
+  - The ledger is posted explicitly, with the same entries that issue and payment post.
+  - Invoices where a later instalment was paid before an earlier one are reported, not changed (D-015 shows them FIFO).
+- **Old Zoho links.** They become `payment_links` rows:
+  - Paid links are tied to their payment and dated by `paid_on`.
+  - Unpaid links stay **active** at Zoho and in LexForgeX. They are not cancelled at cutover, so the webhook keeps recording them.
+- **No emails on import.** The history emits no invoice or payment events. Each open invoice gets one `INVOICE_CREATED` with `imported: true`. The engine then plans only future date-relative reminders and links: immediate workflows are skipped, and times already past are dropped. The old email log becomes "Email sent (previous app)" timeline entries.

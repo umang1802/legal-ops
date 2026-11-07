@@ -17,13 +17,16 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { api, ApiError } from '../../lib/api.js';
 import { canAct, useSession } from '../../lib/auth.js';
-import { formatDate } from '../../lib/format.js';
+import { formatDate, formatDateTime } from '../../lib/format.js';
 import { formatINR, isZero } from '../../lib/money.js';
 import { INVOICE_TONE } from '../../lib/status.js';
 import { NotFound } from '../common/NotFound.js';
+import { InstalmentsCard } from './InstalmentsCard.js';
+import { IssueSheet } from './IssueSheet.js';
 import { PayOnlineCard } from './PayOnlineCard.js';
 import { ReasonSheet } from './ReasonSheet.js';
 import { RecordPaymentSheet } from './RecordPaymentSheet.js';
+import { SignedDocumentCard } from './SignedDocumentCard.js';
 
 const REFRESH = [
   'invoices',
@@ -41,7 +44,7 @@ export function InvoiceDetailPage() {
   const me = useSession();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const [sheet, setSheet] = useState<'pay' | 'void' | 'writeoff' | 'credit' | 'delete' | null>(null);
+  const [sheet, setSheet] = useState<'pay' | 'void' | 'writeoff' | 'credit' | 'delete' | 'issue' | 'resend' | null>(null);
   const inv = useQuery({
     queryKey: ['invoice', invoiceId],
     queryFn: () => api.get<InvoiceDetailDto>(`/invoices/${invoiceId}`),
@@ -55,6 +58,10 @@ export function InvoiceDetailPage() {
       setSheet(null);
     },
   });
+  const { reset: resetAction } = action;
+  useEffect(() => {
+    if (sheet === null) resetAction();
+  }, [sheet, resetAction]);
   const del = useMutation({
     mutationFn: () => api.delete(`/invoices/${invoiceId}`),
     onSuccess: () => {
@@ -103,6 +110,9 @@ export function InvoiceDetailPage() {
               {i.taxMode === 'gst' ? (
                 <Badge>{i.isReverseCharge ? 'GST · reverse charge' : 'GST invoice'}</Badge>
               ) : null}
+              {i.revision > 0 ? <Badge>Revision {i.revision}</Badge> : null}
+              {i.signedDocument ? <Badge tone="success">Digitally signed</Badge> : null}
+              {i.status === 'issued' && !i.sentAt ? <Badge tone="warning">Not sent</Badge> : null}
             </div>
           </div>
           {i.status !== 'draft' ? (
@@ -119,11 +129,7 @@ export function InvoiceDetailPage() {
         <div className="flex flex-wrap gap-2">
           {i.status === 'draft' ? (
             <>
-              <Button
-                icon={<Send className="size-4" />}
-                loading={action.isPending}
-                onClick={() => action.mutate({ path: 'issue' })}
-              >
+              <Button icon={<Send className="size-4" />} onClick={() => setSheet('issue')}>
                 Issue invoice
               </Button>
               <Button
@@ -142,6 +148,25 @@ export function InvoiceDetailPage() {
                 Delete draft
               </Button>
             </>
+          ) : null}
+          {i.status === 'issued' ? (
+            <Button
+              variant={i.sentAt ? 'secondary' : 'primary'}
+              icon={<Send className="size-4" />}
+              loading={action.isPending && action.variables?.path === 'send'}
+              onClick={() => (i.sentAt ? setSheet('resend') : action.mutate({ path: 'send' }))}
+            >
+              {i.sentAt ? 'Send again' : 'Send invoice'}
+            </Button>
+          ) : null}
+          {i.canRevise && i.status === 'issued' ? (
+            <Button
+              variant="secondary"
+              icon={<Pencil className="size-4" />}
+              onClick={() => navigate(`/invoices/${i.id}/edit?revise=1`)}
+            >
+              Edit invoice
+            </Button>
           ) : null}
           {open && canAct(me, 'payments.record') ? (
             <Button icon={<IndianRupee className="size-4" />} onClick={() => setSheet('pay')}>
@@ -225,7 +250,12 @@ export function InvoiceDetailPage() {
             </CardBody>
           </Card>
 
-          <PayOnlineCard invoice={i} canManage={manage} />
+          {i.instalments.length > 0 ? (
+            <InstalmentsCard invoice={i} canManage={manage} />
+          ) : (
+            <PayOnlineCard invoice={i} canManage={manage} />
+          )}
+          {i.status === 'issued' ? <SignedDocumentCard invoice={i} canManage={manage} /> : null}
 
           <Card>
             <CardHeader title="Payments & credits" />
@@ -294,6 +324,12 @@ export function InvoiceDetailPage() {
                 </div>
               ) : null}
             </dl>
+            {i.signatory ? (
+              <p className="mt-3 text-xs text-muted">
+                Signed by {i.signatory.name}, {i.signatory.designation}
+                {i.signatory.withImage ? ' (scanned signature)' : ''}
+              </p>
+            ) : null}
             {i.voidReason ? (
               <Alert tone="info" title="Voided">
                 {i.voidReason}
@@ -309,6 +345,37 @@ export function InvoiceDetailPage() {
         </Card>
       </div>
 
+      <IssueSheet open={sheet === 'issue'} onClose={() => setSheet(null)} invoice={i} />
+      <Sheet
+        open={sheet === 'resend'}
+        onClose={() => setSheet(null)}
+        title="Send again?"
+        footer={
+          <div className="flex gap-2 sm:justify-end">
+            <Button variant="secondary" block className="sm:w-auto" onClick={() => setSheet(null)}>
+              Cancel
+            </Button>
+            <Button
+              block
+              className="sm:w-auto"
+              loading={action.isPending}
+              onClick={() => action.mutate({ path: 'send' })}
+            >
+              Send again
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3 text-sm text-ink-soft">
+          {action.error ? (
+            <Alert tone="danger">{action.error instanceof ApiError ? action.error.message : 'Could not send.'}</Alert>
+          ) : null}
+          <p>
+            This invoice was already sent{i.sentAt ? ` on ${formatDateTime(i.sentAt, me.organization.timezone)}` : ''}.
+            The client will get another email{i.signedDocument ? ' with the digitally signed PDF' : ''}.
+          </p>
+        </div>
+      </Sheet>
       <RecordPaymentSheet
         open={sheet === 'pay'}
         onClose={() => setSheet(null)}

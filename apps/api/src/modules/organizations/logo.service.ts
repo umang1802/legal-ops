@@ -22,7 +22,7 @@ export const logoKey = (orgId: string, logoId: string, type: string) => `org/${o
  */
 export const logoStagingKey = (orgId: string, logoId: string) => `incoming/logos/${orgId}/${logoId}`;
 
-const detectType = (bytes: Buffer): LogoContentType | null => MAGIC.find(([, m]) => bytes.subarray(0, m.length).equals(m))?.[0] ?? null;
+export const detectType = (bytes: Buffer): LogoContentType | null => MAGIC.find(([, m]) => bytes.subarray(0, m.length).equals(m))?.[0] ?? null;
 
 export async function startLogoUpload(deps: Deps, ctx: TenantContext, input: { contentType: LogoContentType }) {
   const logoId = randomUUID();

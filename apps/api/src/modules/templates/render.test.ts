@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { emailLayout, htmlToText, renderTemplate, sanitizeTemplateHtml, unknownVariables } from './render.js';
 
 describe('template rendering', () => {
+  it('escapes *_html-named variables that are not allow-listed', () => {
+    expect(renderTemplate('{{client.name_html}}', { client: { name_html: '<b>x</b>' } }, 'html')).toBe('&lt;b&gt;x&lt;/b&gt;');
+  });
+
   it('escapes every substituted value in HTML mode', () => {
     const out = renderTemplate('<p>Dear {{client.name}}</p>', { client: { name: '<script>alert(1)</script> & Co' } }, 'html');
     expect(out).toBe('<p>Dear &lt;script&gt;alert(1)&lt;/script&gt; &amp; Co</p>');
@@ -23,6 +27,7 @@ describe('template rendering', () => {
 
   it('builds a plain-text alternative and an escaped layout', () => {
     expect(htmlToText('<p>Hello</p><p><a href="https://x.test/t">Open</a></p>')).toBe('Hello\nOpen (https://x.test/t)');
+    expect(htmlToText('<table><thead><tr><th>#</th><th>Due</th></tr></thead><tbody><tr><td>1</td><td>5 Oct</td></tr><tr><td>2</td><td>9 Oct</td></tr></tbody></table>')).toBe('# | Due\n1 | 5 Oct\n2 | 9 Oct');
     expect(emailLayout('<p>x</p>', { name: 'A & B', email: null, phone: null, logoUrl: null })).toContain('A &amp; B');
   });
 

@@ -1,13 +1,15 @@
-import type {
-  InvoiceDetailDto,
-  InvoiceDisplayStatus,
-  InvoiceListItemDto,
-  InvoiceStatus,
-  PaymentMethod,
-  PaymentState,
+import {
+  canWithFeatures,
+  type InvoiceDetailDto,
+  type InvoiceDisplayStatus,
+  type InvoiceListItemDto,
+  type InvoiceStatus,
+  type PaymentMethod,
+  type PaymentState,
 } from '@legalops/types';
 import {
   computeInvoiceTotals,
+  fiscalYear as fiscalYearOf,
   fromPaise,
   InvoiceCalcError,
   toPaise,
@@ -28,8 +30,12 @@ import { assertMatterVisible } from '../access/matter-scope.js';
 import { recordAudit } from '../audit/audit.service.js';
 import { emitEvent } from '../outbox/outbox.service.js';
 import { addTimelineEvent } from '../timeline/timeline.service.js';
+import { checkStoredInstalments, instalmentStatus, writeInstalments } from './instalments.js';
+import { cancelInvoiceLinksBestEffort } from '../online-payments/payment-links.service.js';
 import { postLedger } from './ledger.js';
 import { CREDIT_NOTE_PREFIX, nextDocumentNumber } from './numbering.js';
+import { snapshotSignatory } from '../organizations/signature.service.js';
+import { activeSignedDocument } from './signed-documents.service.js';
 import { invoiceVisible } from './visibility.js';
 
 const DEFAULT_PAYMENT_TERMS_DAYS = 15;
@@ -176,6 +182,8 @@ export async function getInvoice(db: Db, ctx: TenantContext, id: string): Promis
                i.place_of_supply, i.is_reverse_charge, i.subtotal::text, i.discount_amount::text, i.cgst_amount::text,
                i.sgst_amount::text, i.igst_amount::text, i.rcm_tax_amount::text, i.tax_amount::text, i.notes,
                i.issued_at, i.voided_at, i.void_reason, i.write_off_reason, i.created_at,
+               i.signatory_user_id, i.signatory_name, i.signatory_designation, i.sign_with_image,
+               i.revision, i.revised_at, i.sent_at,
                u.id AS created_by, u.first_name, u.last_name
         FROM invoices i LEFT JOIN users u ON u.id = i.created_by WHERE i.id = ${id}`,
   ))!;
@@ -239,6 +247,23 @@ export async function getInvoice(db: Db, ctx: TenantContext, id: string): Promis
     rcmTax: d.rcm_tax_amount as string,
     taxAmount: d.tax_amount as string,
     notes: d.notes as string | null,
+    instalments: await instalmentStatus(db, id, await orgToday(db, ctx.organizationId)),
+    signatory: d.signatory_name
+      ? {
+          userId: d.signatory_user_id as string | null,
+          name: d.signatory_name as string,
+          designation: d.signatory_designation as string,
+          withImage: d.sign_with_image as boolean,
+        }
+      : null,
+    revision: d.revision as number,
+    revisedAt: iso(d.revised_at as Date | null),
+    sentAt: iso(d.sent_at as Date | null),
+    signedDocument: await activeSignedDocument(db, id).then((s) =>
+      s ? { uploadedAt: s.uploadedAt, uploadedBy: s.uploadedBy, sizeBytes: s.sizeBytes } : null,
+    ),
+    // Simple-mode invoices can be revised in place after issue (GST ones never: credit note); needs invoices.manage.
+    canRevise: d.tax_mode === 'simple' && base.status === 'issued' && canWithFeatures(ctx.role, ctx.features, 'invoices.manage'),
     items: items2.map((l) => ({
       id: l.id,
       position: l.position,
@@ -287,29 +312,30 @@ export async function getInvoice(db: Db, ctx: TenantContext, id: string): Promis
 // Drafting
 // ---------------------------------------------------------------------------
 
-type OrgTax = {
+export type OrgTax = {
   tax_mode: 'simple' | 'gst';
   gstin: string | null;
   state_code: string | null;
   invoice_prefix: string;
+  invoice_number_digits: number;
   default_sac_code: string | null;
   default_gst_rate: string | null;
   settings: { paymentTermsDays?: number };
 };
 
-async function loadOrgTax(db: Db, organizationId: string): Promise<OrgTax> {
+export async function loadOrgTax(db: Db, organizationId: string): Promise<OrgTax> {
   return (await queryOne<OrgTax>(
     db,
-    sql`SELECT tax_mode, gstin, state_code, invoice_prefix, default_sac_code, default_gst_rate::text, settings
+    sql`SELECT tax_mode, gstin, state_code, invoice_prefix, invoice_number_digits, default_sac_code, default_gst_rate::text, settings
         FROM organizations WHERE id = ${organizationId}`,
   ))!;
 }
 
-type DraftInput = z.output<typeof updateInvoiceSchema>;
+export type DraftInput = z.output<typeof updateInvoiceSchema>;
 type Item = DraftInput['items'][number];
 
 /** Fills GST defaults, validates milestone/expense links, and computes totals. */
-async function prepareDraft(
+export async function prepareDraft(
   db: Db,
   ctx: TenantContext,
   matterId: string,
@@ -397,7 +423,7 @@ async function prepareDraft(
   return { items, totals, placeOfSupply, isReverseCharge };
 }
 
-async function writeItems(
+export async function writeItems(
   db: Db,
   ctx: TenantContext,
   invoiceId: string,
@@ -417,12 +443,12 @@ async function writeItems(
   }
 }
 
-const totalsColumns = (t: ReturnType<typeof computeInvoiceTotals>) => sql`
+export const totalsColumns = (t: ReturnType<typeof computeInvoiceTotals>) => sql`
   subtotal = ${fromPaise(t.subtotal)}, discount_amount = ${fromPaise(t.discount)}, cgst_amount = ${fromPaise(t.cgst)},
   sgst_amount = ${fromPaise(t.sgst)}, igst_amount = ${fromPaise(t.igst)}, rcm_tax_amount = ${fromPaise(t.rcmTax)},
   tax_amount = ${fromPaise(t.tax)}, total_amount = ${fromPaise(t.total)}`;
 
-async function loadMatterClient(db: Db, ctx: TenantContext, matterId: string) {
+export async function loadMatterClient(db: Db, ctx: TenantContext, matterId: string) {
   await assertMatterVisible(db, ctx, matterId);
   return (await queryOne<{
     client_id: string;
@@ -470,6 +496,7 @@ export async function createInvoice(
     const id = row!.id;
     await writeItems(tx, ctx, id, items, totals.lineAmounts);
     await query(tx, sql`UPDATE invoices SET ${totalsColumns(totals)} WHERE id = ${id}`);
+    if (input.instalments) await writeInstalments(tx, ctx.organizationId, id, input.instalments, totals.total);
     await recordAudit(tx, {
       organizationId: ctx.organizationId,
       actorUserId: ctx.userId,
@@ -485,13 +512,14 @@ export async function createInvoice(
         ctx,
         id,
         { issueDate: input.issueDate ?? undefined, dueDate: input.dueDate ?? undefined },
+        { sendToClient: true, signWithImage: false },
         meta,
       );
     return getInvoice(tx, ctx, id);
   });
 }
 
-async function lockInvoice(db: Db, ctx: TenantContext, id: string) {
+export async function lockInvoice(db: Db, ctx: TenantContext, id: string) {
   const row = await queryOne<{
     id: string;
     status: InvoiceStatus;
@@ -505,10 +533,11 @@ async function lockInvoice(db: Db, ctx: TenantContext, id: string) {
     due_date: string | null;
     place_of_supply: string | null;
     is_reverse_charge: boolean;
+    prenumbered: boolean;
   }>(
     db,
     sql`SELECT i.id, i.status, i.matter_id, i.client_id, i.tax_mode, i.invoice_number, i.total_amount::text,
-               i.tax_amount::text, i.issue_date::text, i.due_date::text, i.place_of_supply, i.is_reverse_charge
+               i.tax_amount::text, i.issue_date::text, i.due_date::text, i.place_of_supply, i.is_reverse_charge, i.prenumbered
         FROM invoices i
         WHERE i.id = ${id} AND i.organization_id = ${ctx.organizationId} AND ${invoiceVisible(ctx)}
         FOR UPDATE OF i`,
@@ -547,6 +576,16 @@ export async function updateDraft(
             issue_date = ${input.issueDate ?? null}, due_date = ${input.dueDate ?? null}, notes = ${input.notes ?? null}
           WHERE id = ${id}`,
     );
+    // Key absent = keep the schedule (its last date stays the due date); [] = clear; 2–24 = replace.
+    if (input.instalments !== undefined) {
+      await writeInstalments(tx, ctx.organizationId, id, input.instalments, totals.total);
+    } else {
+      await query(
+        tx,
+        sql`UPDATE invoices SET due_date = (SELECT due_date FROM invoice_instalments WHERE invoice_id = ${id} ORDER BY seq DESC LIMIT 1)
+            WHERE id = ${id} AND EXISTS (SELECT 1 FROM invoice_instalments WHERE invoice_id = ${id})`,
+      );
+    }
     await recordAudit(tx, {
       organizationId: ctx.organizationId,
       actorUserId: ctx.userId,
@@ -570,6 +609,8 @@ export async function deleteDraft(
   await withTransaction(deps.pool, async (tx) => {
     const inv = await lockInvoice(tx, ctx, id);
     if (inv.status !== 'draft') throw conflict('Only drafts can be deleted. Void an issued invoice instead.');
+    if (inv.prenumbered)
+      throw conflict(`This draft already carries number ${inv.invoice_number} from the previous invoicing app, so it can’t be deleted. Void it instead.`);
     await query(tx, sql`DELETE FROM invoices WHERE id = ${id}`);
     await recordAudit(tx, {
       organizationId: ctx.organizationId,
@@ -587,11 +628,14 @@ export async function deleteDraft(
 // Issue / void / write-off / credit note
 // ---------------------------------------------------------------------------
 
+export type IssueOptions = { sendToClient: boolean; signatoryUserId?: string | undefined; signWithImage: boolean };
+
 async function issueInTx(
   db: Db,
   ctx: TenantContext,
   id: string,
   dates: { issueDate?: string | undefined; dueDate?: string | undefined },
+  opts: IssueOptions,
   meta: RequestMeta,
 ): Promise<void> {
   const inv = await lockInvoice(db, ctx, id);
@@ -606,7 +650,13 @@ async function issueInTx(
   const today = await orgToday(db, ctx.organizationId);
   const issueDate = dates.issueDate ?? inv.issue_date ?? today;
   const terms = Number(org.settings?.paymentTermsDays ?? DEFAULT_PAYMENT_TERMS_DAYS);
+  const lastInstalmentDue = await queryOne<{ d: string }>(
+    db,
+    sql`SELECT due_date::text AS d FROM invoice_instalments WHERE invoice_id = ${id} ORDER BY seq DESC LIMIT 1`,
+  );
+  // With a schedule, the invoice is due on its last instalment.
   const dueDate =
+    lastInstalmentDue?.d ??
     dates.dueDate ??
     inv.due_date ??
     (await queryOne<{ d: string }>(db, sql`SELECT (${issueDate}::date + ${terms}::int)::text AS d`))!.d;
@@ -651,6 +701,9 @@ async function issueInTx(
     isReverseCharge: inv.is_reverse_charge,
   });
 
+  // The schedule must still add up to the total as recomputed now.
+  await checkStoredInstalments(db, id, totals.total);
+
   // Lock and re-check linked milestones/expenses at the moment of issue.
   for (const l of items) {
     if (l.fee_milestone_id) {
@@ -669,17 +722,19 @@ async function issueInTx(
     }
   }
 
-  const { number, fiscalYear } = await nextDocumentNumber(
-    db,
-    ctx.organizationId,
-    'invoice',
-    issueDate,
-    org.invoice_prefix,
-  );
+  const sig = await snapshotSignatory(db, ctx.organizationId, opts.signatoryUserId, ctx.userId, opts.signWithImage, inv.matter_id);
+  // An imported pre-numbered draft keeps its legacy number (the series stays gapless); its date must stay in that FY.
+  const { number, fiscalYear } =
+    inv.prenumbered && inv.invoice_number
+      ? keepLegacyNumber(inv.invoice_number, issueDate)
+      : await nextDocumentNumber(db, ctx.organizationId, 'invoice', issueDate, org.invoice_prefix, org.invoice_number_digits);
   await query(
     db,
     sql`UPDATE invoices SET ${totalsColumns(totals)}, status = 'issued', invoice_number = ${number}, fiscal_year = ${fiscalYear},
           issue_date = ${issueDate}, due_date = ${dueDate}, issued_at = now(), issued_by = ${ctx.userId},
+          sent_at = ${opts.sendToClient ? sql`now()` : sql`NULL`},
+          signatory_user_id = ${sig.userId}, signatory_name = ${sig.name}, signatory_designation = ${sig.designation},
+          signatory_signature_key = ${sig.signatureKey}, sign_with_image = ${sig.withImage},
           supplier_gstin = ${inv.tax_mode === 'gst' ? org.gstin : null},
           supplier_state_code = ${inv.tax_mode === 'gst' ? org.state_code : null},
           recipient_gstin = ${inv.tax_mode === 'gst' ? mc.gstin : null},
@@ -723,7 +778,7 @@ async function issueInTx(
     sourceType: 'invoice',
     sourceId: id,
   });
-  // PRD event name: INVOICE_CREATED triggers the invoice email (Phase 5 workflow).
+  // PRD event name: INVOICE_CREATED triggers the invoice email (Phase 5 workflow). Not sent: nothing is planned.
   await emitEvent(db, {
     organizationId: ctx.organizationId,
     eventType: 'INVOICE_CREATED',
@@ -736,6 +791,7 @@ async function issueInTx(
       clientId: inv.client_id,
       total: fromPaise(totals.total),
       dueDate,
+      sendToClient: opts.sendToClient,
     },
     actorUserId: ctx.userId,
   });
@@ -751,20 +807,85 @@ async function issueInTx(
       dueDate,
       total: fromPaise(totals.total),
       tax: fromPaise(totals.tax),
+      sendToClient: opts.sendToClient,
     },
     meta,
   });
+}
+
+/** The FY inside a legacy number such as "VMA/2026-27/007", if it has one. */
+const legacyNumberFy = (number: string): string | undefined => /\/(\d{4}-\d{2})\/[^/]+$/.exec(number)?.[1];
+
+function keepLegacyNumber(number: string, issueDate: string): { number: string; fiscalYear: string } {
+  const fy = fiscalYearOf(issueDate);
+  const numberFy = legacyNumberFy(number);
+  if (numberFy && numberFy !== fy)
+    throw validationError(`Invoice ${number} belongs to FY ${numberFy}; keep the issue date in that financial year`, [
+      { path: 'issueDate', message: `Must be in FY ${numberFy}` },
+    ]);
+  return { number, fiscalYear: numberFy ?? fy };
 }
 
 export async function issueInvoice(
   deps: Deps,
   ctx: TenantContext,
   id: string,
-  dates: { issueDate?: string | undefined; dueDate?: string | undefined },
+  input: { issueDate?: string | undefined; dueDate?: string | undefined } & Partial<IssueOptions>,
   meta: RequestMeta,
 ): Promise<InvoiceDetailDto> {
   return withTransaction(deps.pool, async (tx) => {
-    await issueInTx(tx, ctx, id, dates, meta);
+    await issueInTx(
+      tx,
+      ctx,
+      id,
+      { issueDate: input.issueDate, dueDate: input.dueDate },
+      { sendToClient: input.sendToClient ?? true, signatoryUserId: input.signatoryUserId, signWithImage: input.signWithImage ?? false },
+      meta,
+    );
+    return getInvoice(tx, ctx, id);
+  });
+}
+
+/**
+ * "Send invoice": emails an issued invoice to the client and starts its reminders and instalment link emails.
+ * Not idempotent by design (the UI asks "Send again?"): each press re-sends the invoice email. Scheduled reminders
+ * are not duplicated, since their idempotency keys don't depend on the event.
+ */
+export async function sendInvoice(deps: Deps, ctx: TenantContext, id: string, meta: RequestMeta): Promise<InvoiceDetailDto> {
+  return withTransaction(deps.pool, async (tx) => {
+    const inv = await lockInvoice(tx, ctx, id);
+    if (inv.status !== 'issued') throw conflict('Only an issued invoice can be sent');
+    const before = (await queryOne<{ sent: boolean }>(tx, sql`SELECT sent_at IS NOT NULL AS sent FROM invoices WHERE id = ${id}`))!;
+    const row = (await queryOne<{ invoice_number: string; total: string; due_date: string }>(
+      tx,
+      sql`UPDATE invoices SET sent_at = now() WHERE id = ${id} RETURNING invoice_number, total_amount::text AS total, due_date::text`,
+    ))!;
+    await emitEvent(tx, {
+      organizationId: ctx.organizationId,
+      eventType: 'INVOICE_CREATED',
+      aggregateType: 'invoice',
+      aggregateId: id,
+      payload: {
+        invoiceId: id,
+        invoiceNumber: row.invoice_number,
+        matterId: inv.matter_id,
+        clientId: inv.client_id,
+        total: row.total,
+        dueDate: row.due_date,
+        sendToClient: true,
+      },
+      actorUserId: ctx.userId,
+      dedupeKey: `INVOICE_SENT:${id}:${Date.now()}`,
+    });
+    await recordAudit(tx, {
+      organizationId: ctx.organizationId,
+      actorUserId: ctx.userId,
+      action: 'invoice.sent',
+      entityType: 'invoice',
+      entityId: id,
+      after: { invoiceNumber: row.invoice_number, resend: before.sent },
+      meta,
+    });
     return getInvoice(tx, ctx, id);
   });
 }
@@ -776,9 +897,11 @@ export async function voidInvoice(
   reason: string,
   meta: RequestMeta,
 ) {
-  return withTransaction(deps.pool, async (tx) => {
+  await withTransaction(deps.pool, async (tx) => {
     const inv = await lockInvoice(tx, ctx, id);
-    if (inv.status !== 'issued')
+    // An imported pre-numbered draft can't be deleted (its number would be lost), so it is voided instead.
+    const prenumberedDraft = inv.status === 'draft' && inv.prenumbered;
+    if (inv.status !== 'issued' && !prenumberedDraft)
       throw conflict(
         inv.status === 'draft'
           ? 'Delete a draft instead of voiding it'
@@ -797,9 +920,14 @@ export async function voidInvoice(
         'Payments or credit notes are applied to this invoice. Reverse or un-apply them first.',
       );
     }
+    const today = await orgToday(tx, ctx.organizationId);
     await query(
       tx,
-      sql`UPDATE invoices SET status = 'void', voided_at = now(), voided_by = ${ctx.userId}, void_reason = ${reason} WHERE id = ${id}`,
+      sql`UPDATE invoices SET status = 'void', voided_at = now(), voided_by = ${ctx.userId}, void_reason = ${reason},
+            issue_date = COALESCE(issue_date, ${today}::date), due_date = COALESCE(due_date, issue_date, ${today}::date),
+            issued_at = COALESCE(issued_at, now()), issued_by = COALESCE(issued_by, ${ctx.userId}),
+            fiscal_year = COALESCE(fiscal_year, ${(inv.invoice_number ? legacyNumberFy(inv.invoice_number) : undefined) ?? fiscalYearOf(inv.issue_date ?? today)})
+          WHERE id = ${id}`,
     );
     await query(
       tx,
@@ -809,8 +937,9 @@ export async function voidInvoice(
       tx,
       sql`UPDATE expenses SET status = 'recorded' WHERE id IN (SELECT expense_id FROM invoice_items WHERE invoice_id = ${id} AND expense_id IS NOT NULL)`,
     );
-    const total = toPaise(inv.total_amount);
-    const tax = toPaise(inv.tax_amount);
+    // A draft never reached the ledger, so voiding it posts nothing.
+    const total = prenumberedDraft ? 0 : toPaise(inv.total_amount);
+    const tax = prenumberedDraft ? 0 : toPaise(inv.tax_amount);
     const base = { matterId: inv.matter_id, clientId: inv.client_id, invoiceId: id };
     await postLedger(tx, ctx.organizationId, ctx.userId, [
       {
@@ -853,12 +982,14 @@ export async function voidInvoice(
       action: 'invoice.voided',
       entityType: 'invoice',
       entityId: id,
-      before: { status: 'issued' },
+      before: { status: inv.status },
       after: { status: 'void', reason },
       meta,
     });
-    return getInvoice(tx, ctx, id);
   });
+  // After commit, outside the transaction: Zoho is never called with a lock held.
+  await cancelInvoiceLinksBestEffort(deps, ctx.organizationId, id, ctx.userId, 'invoice voided', meta);
+  return getInvoice(deps.pool, ctx, id);
 }
 
 export async function writeOffInvoice(
@@ -868,7 +999,7 @@ export async function writeOffInvoice(
   reason: string,
   meta: RequestMeta,
 ) {
-  return withTransaction(deps.pool, async (tx) => {
+  await withTransaction(deps.pool, async (tx) => {
     const inv = await lockInvoice(tx, ctx, id);
     if (inv.status !== 'issued') throw conflict('Only an issued invoice can be written off');
     const due = toPaise(
@@ -913,8 +1044,9 @@ export async function writeOffInvoice(
       after: { amount: fromPaise(due), reason },
       meta,
     });
-    return getInvoice(tx, ctx, id);
   });
+  await cancelInvoiceLinksBestEffort(deps, ctx.organizationId, id, ctx.userId, 'invoice written off', meta);
+  return getInvoice(deps.pool, ctx, id);
 }
 
 export async function issueCreditNote(

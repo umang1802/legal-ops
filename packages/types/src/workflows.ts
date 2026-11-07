@@ -34,12 +34,24 @@ export const TRIGGER_LABELS: Record<WorkflowTrigger, string> = {
 };
 
 /** Which date a trigger's actions can be timed against ("3 days before the hearing"). */
-export const TRIGGER_ANCHORS: Partial<Record<WorkflowTrigger, { anchor: WorkflowAnchor; label: string }>> = {
+export const TRIGGER_ANCHORS: Partial<Record<WorkflowTrigger, { anchor: WorkflowAnchor; label: string; also?: WorkflowAnchor[] }>> = {
   HEARING_SCHEDULED: { anchor: 'hearing.date', label: 'the hearing date' },
-  INVOICE_CREATED: { anchor: 'invoice.due_date', label: 'the invoice due date' },
+  // Invoices with instalments: reminders on `invoice.due_date` run per instalment; `instalment.due_date` runs only for those.
+  INVOICE_CREATED: { anchor: 'invoice.due_date', label: 'the invoice due date', also: ['instalment.due_date'] },
   TASK_CREATED: { anchor: 'task.due_date', label: 'the task due date' },
 };
-export type WorkflowAnchor = 'hearing.date' | 'invoice.due_date' | 'task.due_date';
+export type WorkflowAnchor = 'hearing.date' | 'invoice.due_date' | 'task.due_date' | 'instalment.due_date';
+export const ANCHOR_LABELS: Record<WorkflowAnchor, string> = {
+  'hearing.date': 'the hearing date',
+  'invoice.due_date': 'the invoice due date',
+  'task.due_date': 'the task due date',
+  'instalment.due_date': 'each instalment’s due date',
+};
+/** Every anchor a trigger's relative timing may use. */
+export const anchorsFor = (trigger: WorkflowTrigger): WorkflowAnchor[] => {
+  const a = TRIGGER_ANCHORS[trigger];
+  return a ? [a.anchor, ...(a.also ?? [])] : [];
+};
 
 export type WorkflowTiming =
   | { timing: 'immediate' }
@@ -170,6 +182,7 @@ export const SKIP_REASON_LABELS: Record<string, string> = {
   user_inactive: 'Recipient is no longer active',
   target_changed: 'The hearing/invoice changed before sending',
   rejected: 'Rejected by a reviewer',
+  invoice_revised: 'The invoice was revised before this was sent',
 };
 
 export type NotificationDto = {
@@ -216,10 +229,10 @@ export type EmailTemplateDto = {
 
 export type TemplateVariable = { name: string; example: string; /** Team-only: never rendered in client emails. */ internalOnly?: true };
 
-/** Variables the editor offers (rendered server-side, HTML-escaped). */
+/** Variables the editor offers (rendered server-side, HTML-escaped; allow-listed RAW_HTML_VARS are pre-escaped blocks inserted as-is). */
 export const TEMPLATE_VARIABLES: { group: string; vars: TemplateVariable[] }[] = [
-  { group: 'Firm', vars: [{ name: 'firm.name', example: 'Sharma & Associates' }, { name: 'firm.email', example: 'office@sharma.example.com' }, { name: 'firm.phone', example: '+91 11 4000 0000' }] },
-  { group: 'Client', vars: [{ name: 'client.name', example: 'Raj Sharma' }] },
+  { group: 'Firm', vars: [{ name: 'firm.name', example: 'Sharma & Associates' }, { name: 'firm.email', example: 'office@sharma.example.com' }, { name: 'firm.phone', example: '+91 11 4000 0000' }, { name: 'firm.registration_line', example: 'LLPIN: ADB-8169' }, { name: 'firm.bank_details_html', example: '<p>Account name: <strong>Sharma &amp; Associates</strong><br>Account number: <strong>123456789012</strong><br>IFSC: <strong>HDFC0001234</strong></p>' }] },
+  { group: 'Client', vars: [{ name: 'client.name', example: 'Raj Sharma' }, { name: 'client.greeting', example: 'Dear Mr Raj Sharma' }] },
   { group: 'Matter', vars: [{ name: 'matter.title', example: 'Sharma v ABC' }, { name: 'matter.reference', example: 'SA-2026-001' }] },
   { group: 'Case', vars: [{ name: 'case.case_number', example: 'CS(OS) 412/2026' }, { name: 'case.court', example: 'Delhi High Court' }, { name: 'case.cnr', example: 'DLHC010004122026' }] },
   {
@@ -251,6 +264,21 @@ export const TEMPLATE_VARIABLES: { group: string; vars: TemplateVariable[] }[] =
       { name: 'invoice.amount_due', example: '₹30,000.00' },
       { name: 'invoice.due_date', example: '15 Oct 2026' },
       { name: 'invoice.days_overdue', example: '7' },
+      { name: 'invoice.amount_now', example: '₹10,000.00' },
+      { name: 'invoice.due_now', example: '15 Oct 2026' },
+      { name: 'invoice.payment_terms_html', example: '<p>This invoice is payable in 3 instalments. <strong>₹10,000.00</strong> is due by <strong>15 Oct 2026</strong>.</p>' },
+    ],
+  },
+  {
+    group: 'Instalment',
+    vars: [
+      { name: 'instalment.number', example: '2' },
+      { name: 'instalment.count', example: '3' },
+      { name: 'instalment.amount', example: '₹10,000.00' },
+      { name: 'instalment.remaining', example: '₹6,000.00' },
+      { name: 'instalment.due_date', example: '15 Oct 2026' },
+      { name: 'links.pay', example: 'https://payments.zoho.in/paymentlinks/abc123' },
+      { name: 'links.pay_html', example: '<p><a href="https://payments.zoho.in/paymentlinks/abc123">Pay online</a> (instalment 1 of 3)</p>' },
     ],
   },
   { group: 'Payment', vars: [{ name: 'payment.amount', example: '₹20,000.00' }, { name: 'payment.receipt_number', example: 'RCPT/2026-27/000001' }, { name: 'payment.date', example: '3 Oct 2026' }] },

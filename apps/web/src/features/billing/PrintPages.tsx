@@ -17,11 +17,17 @@ function FirmHeader({
   org,
   docTitle,
   number,
+  gstin,
+  revisionLine,
 }: {
   org: OrganizationDto;
   docTitle: string;
   number: string | null;
+  /** The GSTIN printed on the document. Invoices pass their issue-time snapshot; defaults to the firm's current one. */
+  gstin?: string | null | undefined;
+  revisionLine?: string | null | undefined;
 }) {
+  const shownGstin = gstin === undefined ? org.gstin : gstin;
   return (
     <header className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-300 pb-4">
       <div>
@@ -31,12 +37,18 @@ function FirmHeader({
           {[org.address, org.city, org.state, org.pincode].filter(Boolean).join(', ')}
         </p>
         <p className="text-xs text-gray-600">{[org.email, org.phone].filter(Boolean).join(' · ')}</p>
-        {org.gstin ? <p className="text-xs text-gray-600">GSTIN {org.gstin}</p> : null}
+        {shownGstin ? <p className="text-xs text-gray-600">GSTIN {shownGstin}</p> : null}
+        {org.registrationLabel && org.registrationValue ? (
+          <p className="text-xs text-gray-600">
+            {org.registrationLabel} {org.registrationValue}
+          </p>
+        ) : null}
         {org.pan ? <p className="text-xs text-gray-600">PAN {org.pan}</p> : null}
       </div>
       <div className="text-right">
         <p className="text-xl font-semibold tracking-tight">{docTitle}</p>
         <p className="font-mono text-sm">{number}</p>
+        {revisionLine ? <p className="text-xs text-gray-600">{revisionLine}</p> : null}
       </div>
     </header>
   );
@@ -59,12 +71,26 @@ export function InvoicePrintPage() {
   });
   const i = inv.data;
   const ready = Boolean(i && org.data && client.data);
+  const o = org.data;
+  const hasBank = Boolean(
+    o && (o.bankAccountNumber || o.bankName || o.bankIfsc || o.bankAccountName || o.upiId || o.bankBranch),
+  );
   const gst = i?.taxMode === 'gst';
   return (
     <PrintShell title="Invoice" ready={ready}>
       {i && org.data && client.data ? (
         <>
-          <FirmHeader org={org.data} docTitle={gst ? 'Tax invoice' : 'Invoice'} number={i.invoiceNumber} />
+          <FirmHeader
+            org={org.data}
+            docTitle={gst ? 'Tax invoice' : 'Invoice'}
+            number={i.invoiceNumber}
+            gstin={i.supplierGstin ?? (i.issuedAt ? null : org.data.gstin)}
+            revisionLine={
+              i.revision > 0
+                ? `Revision ${i.revision}${i.revisedAt ? ` · ${formatDate(i.revisedAt.slice(0, 10))}` : ''}`
+                : null
+            }
+          />
           {i.status === 'void' ? (
             <p className="mt-3 rounded border border-red-600 px-3 py-1 text-center font-semibold text-red-700">
               VOID: {i.voidReason}
@@ -135,6 +161,52 @@ export function InvoicePrintPage() {
             {!isZero(i.amountCredited) ? <Row label="Credited" value={formatINR(i.amountCredited)} /> : null}
             <Row label="Balance due" value={formatINR(i.amountDue)} strong />
           </dl>
+          {i.instalments.length > 0 ? (
+            <section className="mt-5">
+              <p className="text-xs font-semibold text-gray-500 uppercase">Payment schedule</p>
+              <table className="mt-1 w-full border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-gray-400 text-left">
+                    <th className="py-1 pr-2">#</th>
+                    <th className="py-1 pr-2">Due date</th>
+                    <th className="py-1 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {i.instalments.map((x) => (
+                    <tr key={x.id} className="border-b border-gray-200">
+                      <td className="py-1 pr-2">{x.seq}</td>
+                      <td className="py-1 pr-2">{formatDate(x.dueDate)}</td>
+                      <td className="py-1 text-right tabular-nums">{formatINR(x.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          ) : null}
+          {hasBank ? (
+            <section className="mt-5 rounded border border-gray-300 p-3 text-xs">
+              <p className="mb-1 font-semibold">Payment details</p>
+              <div className="grid grid-cols-1 gap-x-4 gap-y-0.5 sm:grid-cols-2">
+                {(
+                  [
+                    ['Account name', org.data.bankAccountName],
+                    ['Account number', org.data.bankAccountNumber],
+                    ['IFSC', org.data.bankIfsc],
+                    ['Bank', org.data.bankName],
+                    ['Branch', org.data.bankBranch],
+                    ['UPI', org.data.upiId],
+                  ] as const
+                )
+                  .filter(([, v]) => v)
+                  .map(([k, v]) => (
+                    <div key={k} className="break-all">
+                      {k}: {v}
+                    </div>
+                  ))}
+              </div>
+            </section>
+          ) : null}
           {i.isReverseCharge ? (
             <p className="mt-4 text-xs">
               Tax payable on reverse charge basis: Yes. GST of {formatINR(i.rcmTax)} is payable by the
@@ -142,6 +214,22 @@ export function InvoicePrintPage() {
             </p>
           ) : null}
           {i.notes ? <p className="mt-4 text-xs whitespace-pre-wrap">{i.notes}</p> : null}
+          {i.signatory ? (
+            <div className="mt-8 ml-auto w-full max-w-xs text-right text-xs">
+              <p>For {org.data.legalName ?? org.data.name}</p>
+              {i.signatory.withImage ? (
+                <img
+                  src={`/api/v1/invoices/${i.id}/signature`}
+                  alt={`Signature of ${i.signatory.name}`}
+                  className="mt-1 ml-auto block max-h-16 max-w-full object-contain"
+                />
+              ) : (
+                <div className="h-12" />
+              )}
+              <p className="font-medium">{i.signatory.name}</p>
+              <p className="text-gray-600">{i.signatory.designation}</p>
+            </div>
+          ) : null}
           <p className="mt-8 text-xs text-gray-500">This is a computer-generated invoice. Powered by LexForgeX.</p>
         </>
       ) : null}

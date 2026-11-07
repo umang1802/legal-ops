@@ -41,6 +41,21 @@ const formSchema = z.object({
   gstin: z.string(),
   pan: z.string(),
   defaultSendTime: z.string(),
+  registrationLabel: z.string().max(30, { error: 'Up to 30 characters' }),
+  registrationValue: z.string().max(60, { error: 'Up to 60 characters' }),
+  bankAccountName: z.string(),
+  bankAccountNumber: z
+    .string()
+    .refine((v) => v.trim() === '' || /^\d{6,18}$/.test(v.trim()), { error: 'Account number is 6–18 digits' }),
+  bankIfsc: z
+    .string()
+    .refine((v) => v.trim() === '' || /^[A-Za-z]{4}0[A-Za-z0-9]{6}$/.test(v.trim()), { error: 'Invalid IFSC code' }),
+  bankName: z.string(),
+  bankBranch: z.string(),
+  upiId: z.string(),
+  invoiceNumberDigits: z
+    .string()
+    .refine((v) => /^[3-8]$/.test(v.trim()), { error: 'Use a number from 3 to 8' }),
 });
 type FormValues = z.infer<typeof formSchema>;
 
@@ -62,6 +77,15 @@ const toForm = (o: OrganizationDto): FormValues => ({
   gstin: o.gstin ?? '',
   pan: o.pan ?? '',
   defaultSendTime: o.defaultSendTime,
+  registrationLabel: o.registrationLabel ?? '',
+  registrationValue: o.registrationValue ?? '',
+  bankAccountName: o.bankAccountName ?? '',
+  bankAccountNumber: o.bankAccountNumber ?? '',
+  bankIfsc: o.bankIfsc ?? '',
+  bankName: o.bankName ?? '',
+  bankBranch: o.bankBranch ?? '',
+  upiId: o.upiId ?? '',
+  invoiceNumberDigits: String(o.invoiceNumberDigits),
 });
 
 const NULLABLE = [
@@ -75,24 +99,35 @@ const NULLABLE = [
   'stateCode',
   'gstin',
   'pan',
+  'registrationLabel',
+  'registrationValue',
+  'bankAccountName',
+  'bankAccountNumber',
+  'bankIfsc',
+  'bankName',
+  'bankBranch',
+  'upiId',
 ] as const;
 
-function toPayload(v: FormValues) {
-  const out: Record<string, unknown> = { ...v };
+function toPayload(v: FormValues, isOwner: boolean) {
+  const out: Record<string, unknown> = { ...v, invoiceNumberDigits: Number(v.invoiceNumberDigits) };
   for (const k of NULLABLE) out[k] = v[k].trim() === '' ? null : v[k];
+  // Only owners may change the numbering width; others never send it.
+  if (!isOwner) delete out.invoiceNumberDigits;
   return updateOrganizationSchema.parse(out);
 }
 
 export function FirmSettingsPage() {
   const qc = useQueryClient();
   const me = useSession();
+  const isOwner = me.role === 'owner';
   const org = useQuery({
     queryKey: ['organization'],
     queryFn: () => api.get<OrganizationDto>('/organization'),
   });
   const form = useForm<FormValues>({ resolver: zodResolver(formSchema) });
   const save = useMutation({
-    mutationFn: (v: FormValues) => api.patch<OrganizationDto>('/organization', toPayload(v)),
+    mutationFn: (v: FormValues) => api.patch<OrganizationDto>('/organization', toPayload(v, isOwner)),
     onSuccess: (o) => {
       qc.setQueryData(['organization'], o);
       void qc.invalidateQueries({ queryKey: ME_KEY });
@@ -210,6 +245,59 @@ export function FirmSettingsPage() {
                 applies what you configure; it does not give tax advice.
               </Alert>
             </div>
+          ) : null}
+        </CardBody>
+      </Card>
+
+      {/* Hidden (but still submitted unchanged) when the firm doesn't have Billing. */}
+      <Card className={hasFeature(me, 'billing') ? undefined : 'hidden'}>
+        <CardHeader
+          title="Letterhead & bank details"
+          description="Printed on invoices and payment emails. Leave a field blank to leave it off."
+        />
+        <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <TextField
+            label="Registration label"
+            hint="e.g. LLPIN or Bar Council No."
+            maxLength={30}
+            error={errors.registrationLabel?.message}
+            {...form.register('registrationLabel')}
+          />
+          <TextField
+            label="Registration number"
+            maxLength={60}
+            error={errors.registrationValue?.message}
+            {...form.register('registrationValue')}
+          />
+          <TextField label="Account name" error={errors.bankAccountName?.message} {...form.register('bankAccountName')} />
+          <TextField
+            label="Account number"
+            inputMode="numeric"
+            autoComplete="off"
+            hint="6–18 digits"
+            error={errors.bankAccountNumber?.message}
+            {...form.register('bankAccountNumber')}
+          />
+          <TextField
+            label="IFSC"
+            autoCapitalize="characters"
+            autoComplete="off"
+            hint="e.g. HDFC0001234"
+            maxLength={11}
+            error={errors.bankIfsc?.message}
+            {...form.register('bankIfsc')}
+          />
+          <TextField label="Bank name" error={errors.bankName?.message} {...form.register('bankName')} />
+          <TextField label="Branch" error={errors.bankBranch?.message} {...form.register('bankBranch')} />
+          <TextField label="UPI ID" autoCapitalize="none" error={errors.upiId?.message} {...form.register('upiId')} />
+          {isOwner ? (
+            <TextField
+              label="Invoice number digits"
+              inputMode="numeric"
+              hint="3–8. Applies to new invoice numbers; existing ones don’t change."
+              error={errors.invoiceNumberDigits?.message}
+              {...form.register('invoiceNumberDigits')}
+            />
           ) : null}
         </CardBody>
       </Card>

@@ -21,6 +21,9 @@ export const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ESCAPES[c]
 
 const VAR = /\{\{\s*([a-z_]+(?:\.[a-z_]+)*)\s*\}\}/g;
 
+/** Variables whose values are trusted, pre-escaped HTML (inserted raw in HTML mode). */
+export const RAW_HTML_VARS: ReadonlySet<string> = new Set(['firm.bank_details_html', 'links.pay_html', 'invoice.payment_terms_html']);
+
 type Vars = Record<string, unknown>;
 const lookup = (vars: Vars, path: string): unknown => path.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Vars)[k] : undefined), vars);
 
@@ -32,6 +35,8 @@ export function renderTemplate(template: string, vars: Vars, mode: 'html' | 'tex
   return template.replace(VAR, (_m, path: string) => {
     const v = lookup(vars, path);
     const s = v === null || v === undefined ? '' : String(v);
+    // Allow-listed variables are built server-side from already-escaped parts, so they go in raw.
+    if (RAW_HTML_VARS.has(path)) return mode === 'html' ? s : htmlToText(s);
     return mode === 'html' ? escapeHtml(s) : s;
   });
 }
@@ -49,6 +54,7 @@ export function htmlToText(html: string): string {
   return html
     .replace(/<a [^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gi, '$2 ($1)')
     .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/t[dh]>\s*<t[dh]\b/gi, ' | <td')
     .replace(/<\/(p|h2|h3|li|tr|blockquote)>/gi, '\n')
     .replace(/<li>/gi, '• ')
     .replace(/<[^>]+>/g, '')

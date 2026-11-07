@@ -1,4 +1,4 @@
-import { CONDITION_OPERATORS, NOTIFICATION_STATUSES, NOTIFY_RECIPIENTS, PRIORITIES, WORKFLOW_TRIGGERS } from '@legalops/types';
+import { anchorsFor, CONDITION_OPERATORS, NOTIFICATION_STATUSES, NOTIFY_RECIPIENTS, PRIORITIES, WORKFLOW_TRIGGERS, type WorkflowTrigger } from '@legalops/types';
 import { z } from 'zod';
 import { uuidSchema } from './common.js';
 
@@ -9,7 +9,7 @@ export const workflowTimingSchema = z.discriminatedUnion('timing', [
   z
     .object({
       timing: z.literal('relative'),
-      anchor: z.enum(['hearing.date', 'invoice.due_date', 'task.due_date']),
+      anchor: z.enum(['hearing.date', 'invoice.due_date', 'task.due_date', 'instalment.due_date']),
       offsetDays: z.number().int().min(-90, { error: 'At most 90 days before' }).max(90, { error: 'At most 90 days after' }),
       at: time,
     })
@@ -53,7 +53,6 @@ export const workflowActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('add_tag'), tag: z.string().trim().min(1).max(40) }).strict(),
 ]);
 
-const anchorFor: Record<string, string> = { HEARING_SCHEDULED: 'hearing.date', INVOICE_CREATED: 'invoice.due_date', TASK_CREATED: 'task.due_date' };
 
 const workflowBody = {
   name: z.string().trim().min(1, { error: 'Name the automation' }).max(255),
@@ -67,7 +66,7 @@ const workflowBody = {
 };
 
 const coherent = (v: { triggerType: string; triggerConfig: z.infer<typeof workflowTimingSchema>; actions: z.infer<typeof workflowActionSchema>[] }, ctx: z.RefinementCtx) => {
-  if (v.triggerConfig.timing === 'relative' && anchorFor[v.triggerType] !== v.triggerConfig.anchor) {
+  if (v.triggerConfig.timing === 'relative' && !anchorsFor(v.triggerType as WorkflowTrigger).includes(v.triggerConfig.anchor)) {
     ctx.addIssue({ code: 'custom', path: ['triggerConfig', 'anchor'], message: 'This trigger has no such date to time against' });
   }
   const taskTrigger = v.triggerType === 'TASK_CREATED' || v.triggerType === 'TASK_COMPLETED';

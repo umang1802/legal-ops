@@ -1,5 +1,6 @@
-import { CLIENT_TYPES } from '@legalops/types';
+import { CLIENT_SALUTATIONS, CLIENT_TYPES } from '@legalops/types';
 import { z } from 'zod';
+import { emailSchema } from './common.js';
 import {
   nullableEmail,
   nullableGstin,
@@ -25,6 +26,10 @@ const clientFields = {
   notes: nullableText(5000),
   tags: tagsSchema,
   emailNotificationsEnabled: z.boolean().default(true),
+  salutation: z.enum(CLIENT_SALUTATIONS).nullable().optional(),
+  title: nullableText(120),
+  contactPerson: nullableText(255),
+  ccEmails: z.array(emailSchema).max(5, { error: 'Up to 5 CC addresses' }).default([]),
 };
 
 export const createClientSchema = z
@@ -52,6 +57,10 @@ export const updateClientSchema = z
     notes: clientFields.notes,
     tags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
     emailNotificationsEnabled: z.boolean().optional(),
+    salutation: clientFields.salutation,
+    title: clientFields.title,
+    contactPerson: clientFields.contactPerson,
+    ccEmails: z.array(emailSchema).max(5, { error: 'Up to 5 CC addresses' }).optional(),
     status: z.enum(['active', 'inactive']).optional(),
   })
   .strict();

@@ -1,5 +1,7 @@
 import {
   ACTION_LABELS,
+  ANCHOR_LABELS,
+  anchorsFor,
   CONDITION_FIELDS,
   CONDITION_OPERATORS,
   NOTIFY_RECIPIENTS,
@@ -13,6 +15,7 @@ import {
   type EmailTemplateDto,
   type WorkflowAction,
   type WorkflowActionType,
+  type WorkflowAnchor,
   type WorkflowCondition,
   type WorkflowDto,
   type WorkflowTrigger,
@@ -28,6 +31,8 @@ type Draft = {
   name: string;
   description: string;
   triggerType: WorkflowTrigger;
+  /** Kept from the saved rule when it uses one of the trigger's other dates (e.g. each instalment's due date). */
+  anchor?: WorkflowAnchor;
   when: When;
   days: number;
   at: string;
@@ -56,6 +61,7 @@ function fromWorkflow(w: WorkflowDto): Draft {
     name: w.name,
     description: w.description ?? '',
     triggerType: w.triggerType,
+    ...(t.timing === 'relative' ? { anchor: t.anchor } : {}),
     when: t.timing === 'immediate' ? 'immediate' : t.offsetDays < 0 ? 'before' : t.offsetDays === 0 ? 'on' : 'after',
     days: t.timing === 'relative' ? Math.abs(t.offsetDays) || 1 : 1,
     at: t.timing === 'relative' ? t.at : '09:00',
@@ -67,7 +73,7 @@ function fromWorkflow(w: WorkflowDto): Draft {
 }
 
 function toBody(d: Draft) {
-  const anchor = TRIGGER_ANCHORS[d.triggerType]?.anchor;
+  const anchor = d.anchor && anchorsFor(d.triggerType).includes(d.anchor) ? d.anchor : TRIGGER_ANCHORS[d.triggerType]?.anchor;
   const triggerConfig =
     d.when === 'immediate' || !anchor
       ? { timing: 'immediate' as const }
@@ -120,7 +126,8 @@ export function WorkflowEditorSheet({ open, onClose, workflow }: { open: boolean
   const setAction = (i: number, a: WorkflowAction) => set('actions', d.actions.map((x, j) => (j === i ? a : x)));
   const setCond = (i: number, c: WorkflowCondition) => set('conditions', d.conditions.map((x, j) => (j === i ? c : x)));
 
-  const anchor = TRIGGER_ANCHORS[d.triggerType];
+  const base = TRIGGER_ANCHORS[d.triggerType];
+  const anchor = base && d.anchor && anchorsFor(d.triggerType).includes(d.anchor) ? { anchor: d.anchor, label: ANCHOR_LABELS[d.anchor] } : base;
   const fields = CONDITION_FIELDS.filter((f) => f.triggers.includes(d.triggerType));
   const taskTrigger = isTaskTrigger(d.triggerType);
   const templateOptions = (templates.data ?? []).filter((t) => t.isActive).map((t) => ({ value: t.templateKey, label: t.name }));

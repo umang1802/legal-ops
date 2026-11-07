@@ -65,6 +65,8 @@ export type MemberDto = {
   role: Role;
   status: 'active' | 'suspended' | 'removed';
   joinedAt: string | null;
+  designation: string;
+  hasSignature: boolean;
 };
 
 export type OrganizationDto = {
@@ -90,4 +92,13 @@ export type OrganizationDto = {
   gstin: string | null;
   pan: string | null;
   defaultSendTime: string;
+  registrationLabel: string | null;
+  registrationValue: string | null;
+  bankAccountName: string | null;
+  bankAccountNumber: string | null;
+  bankIfsc: string | null;
+  bankName: string | null;
+  bankBranch: string | null;
+  upiId: string | null;
+  invoiceNumberDigits: number;
 };
