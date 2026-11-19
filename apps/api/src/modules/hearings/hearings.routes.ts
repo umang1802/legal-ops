@@ -2,6 +2,7 @@ import {
   cancelHearingSchema,
   completeHearingSchema,
   createHearingSchema,
+  diaryMonthSchema,
   diarySchema,
   listHearingsSchema,
   updateHearingSchema,
@@ -31,6 +32,10 @@ export function hearingsRouter(deps: Deps): Router {
   // Before '/:hearingId', so 'diary' isn't read as a hearing id.
   r.get('/diary', requireFeature('diary'), requirePermission('matters.view'), async (req, res) => {
     res.json({ data: await hearings.getDiary(deps, tenant(req), parse(diarySchema, req.query)) });
+  });
+
+  r.get('/diary/month', requireFeature('diary'), requirePermission('matters.view'), async (req, res) => {
+    res.json({ data: await hearings.getDiaryMonth(deps, tenant(req), parse(diaryMonthSchema, req.query)) });
   });
 
   r.get('/:hearingId', requirePermission('matters.view'), async (req, res) => {

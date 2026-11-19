@@ -12,3 +12,4 @@ export * from './platform.js';
 export * from './documents.js';
 export * from './online-payments.js';
 export * from './invoice-format.js';
+export * from './hearing-types.js';

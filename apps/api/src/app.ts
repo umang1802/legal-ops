@@ -23,6 +23,7 @@ import { clientsRouter } from './modules/clients/clients.routes.js';
 import { courtsRouter } from './modules/courts/courts.routes.js';
 import { dashboardRouter } from './modules/dashboard/dashboard.routes.js';
 import { documentsRouter } from './modules/documents/documents.routes.js';
+import { hearingTypesRouter } from './modules/hearings/hearing-types.routes.js';
 import { hearingsRouter } from './modules/hearings/hearings.routes.js';
 import { mattersRouter } from './modules/matters/matters.routes.js';
 import { searchRouter } from './modules/search/search.routes.js';
@@ -89,6 +90,7 @@ export function createApp(deps: Deps, opts: { rateLimits?: Partial<RateLimits> }
   api.use('/courts', courtsRouter(deps));
   api.use('/search', searchRouter(deps));
   api.use('/hearings', hearingsRouter(deps));
+  api.use('/hearing-types', hearingTypesRouter(deps));
   api.use('/tasks', tasksRouter(deps));
   api.use('/dashboard', dashboardRouter(deps));
   api.use('/invoices', requireFeature('billing'), invoicesRouter(deps));

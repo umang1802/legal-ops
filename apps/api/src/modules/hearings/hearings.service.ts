@@ -1,7 +1,8 @@
-import { HEARING_STATUS_LABELS, type DiaryDto, type HearingDto, type HearingStatus } from '@legalops/types';
+import { HEARING_STATUS_LABELS, type DiaryDto, type DiaryMonthDto, type HearingDto, type HearingStatus } from '@legalops/types';
 import type {
   completeHearingSchema,
   createHearingSchema,
+  diaryMonthSchema,
   diarySchema,
   listHearingsSchema,
   updateHearingSchema,
@@ -17,6 +18,7 @@ import { iso } from '../../http/query-helpers.js';
 import { matterVisible } from '../access/matter-scope.js';
 import { recordAudit } from '../audit/audit.service.js';
 import { loadVisibleCase } from '../cases/cases.service.js';
+import { resolveHearingType } from './hearing-types.service.js';
 import { emitEvent } from '../outbox/outbox.service.js';
 import { createTaskInTx } from '../tasks/tasks.service.js';
 import { addTimelineEvent } from '../timeline/timeline.service.js';
@@ -174,6 +176,23 @@ export async function getDiary(deps: Deps, ctx: TenantContext, f: z.output<typeo
   return { date, rows: hearings.map((h) => ({ ...h, previous: byCase.get(h.caseId) ?? null })) };
 }
 
+/**
+ * The printable month diary: the month's non-cancelled hearings the caller can see, by date, then court and time. Unlike
+ * the daily board it has no "last date" column, because one case can be listed several times in a month.
+ */
+export async function getDiaryMonth(deps: Deps, ctx: TenantContext, f: z.output<typeof diaryMonthSchema>): Promise<DiaryMonthDto> {
+  const month = f.month ?? (await orgToday(deps.pool, ctx.organizationId)).slice(0, 7);
+  const first = `${month}-01`;
+  const where: SqlFragment[] = [
+    sql`h.scheduled_date >= ${first}::date`,
+    sql`h.scheduled_date < (${first}::date + interval '1 month')`,
+    sql`h.status <> 'cancelled'`,
+  ];
+  if (f.scope === 'mine') where.push(sql`EXISTS (SELECT 1 FROM matter_staff s WHERE s.matter_id = m.id AND s.user_id = ${ctx.userId})`);
+  const rows = await queryHearings(deps.pool, ctx, where, sql`h.scheduled_date, ct.name NULLS LAST, h.courtroom NULLS LAST, h.start_time NULLS LAST, cs.case_number`);
+  return { month, rows };
+}
+
 export async function getHearing(db: Db, ctx: TenantContext, id: string): Promise<HearingDto> {
   const [h] = await queryHearings(db, ctx, [sql`h.id = ${id}`]);
   if (!h) throw notFound('Hearing');
@@ -193,11 +212,12 @@ async function lockHearing(db: Db, ctx: TenantContext, id: string) {
     start_time: string | null;
     courtroom: string | null;
     bench_judge: string | null;
+    hearing_type: string | null;
   }>(
     db,
     sql`SELECT h.id, h.case_id, cs.matter_id, m.client_id, COALESCE(cs.case_number, cs.title) AS case_label, h.status,
                h.scheduled_date::text AS scheduled_date, to_char(h.start_time, 'HH24:MI') AS start_time,
-               h.courtroom, h.bench_judge
+               h.courtroom, h.bench_judge, h.hearing_type
         FROM hearings h JOIN cases cs ON cs.id = h.case_id JOIN matters m ON m.id = cs.matter_id
         WHERE h.id = ${id} AND h.organization_id = ${ctx.organizationId} AND ${matterVisible(ctx, sql.raw('m.id'))}
         FOR UPDATE OF h`,
@@ -274,6 +294,8 @@ async function insertHearing(
       matterId: c.matter_id,
       scheduledDate: h.scheduledDate,
       startTime: h.startTime ?? null,
+      // Set when the next date was entered while recording the last hearing: the client already gets that update.
+      followUp: Boolean(h.previousHearingId),
     },
     actorUserId: ctx.userId,
   });
@@ -297,10 +319,11 @@ export async function createHearing(
 ): Promise<HearingDto> {
   return withTransaction(deps.pool, async (tx) => {
     const c = await loadVisibleCase(tx, ctx, input.caseId);
+    const hearingType = await resolveHearingType(tx, ctx.organizationId, input.hearingType);
     const id = await insertHearing(
       tx,
       ctx,
-      input,
+      { ...input, hearingType },
       { matter_id: c.matter_id, client_id: c.client_id, label: c.case_number ?? c.title },
       meta,
     );
@@ -333,11 +356,13 @@ export async function updateHearing(
         `This hearing is ${HEARING_STATUS_LABELS[before.status].toLowerCase()}; it can no longer be edited`,
       );
     }
-    const keys = (Object.keys(input) as (keyof typeof input)[]).filter((k) => input[k] !== undefined);
+    const changes: Record<string, unknown> = { ...input };
+    if (input.hearingType !== undefined) changes.hearingType = await resolveHearingType(tx, ctx.organizationId, input.hearingType, before.hearing_type);
+    const keys = (Object.keys(changes) as (keyof typeof HEARING_COLUMNS)[]).filter((k) => changes[k] !== undefined);
     if (keys.length > 0) {
       await query(
         tx,
-        sql`UPDATE hearings SET ${sql.join(keys.map((k) => sql`${sql.raw(HEARING_COLUMNS[k])} = ${input[k]}`))}
+        sql`UPDATE hearings SET ${sql.join(keys.map((k) => sql`${sql.raw(HEARING_COLUMNS[k])} = ${changes[k]}`))}
             WHERE id = ${id}`,
       );
     }

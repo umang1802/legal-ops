@@ -17,6 +17,8 @@ const email = (recipient: 'client' | 'lead' | 'matter_team' | 'assignee' | 'owne
 
 /** Instalment invoices get the payment-link email 3 days before each due date instead of this reminder. */
 const INVOICE_DUE_3D_CONDITIONS: WorkflowCondition[] = [{ field: 'instalment.count', operator: 'is_empty' }];
+/** Only hearings added directly: one whose date came from recording the last hearing is already in that update. */
+const HEARING_ADDED_DIRECTLY: WorkflowCondition[] = [{ field: 'hearing.listed_from', operator: 'equals', value: 'new' }];
 
 /** PRD §42 default automation recipes. Seeded on, editable and switchable per firm. */
 export const DEFAULT_WORKFLOWS: Default[] = [
@@ -26,6 +28,24 @@ export const DEFAULT_WORKFLOWS: Default[] = [
   { key: 'hearing_morning_lead', name: 'Hearing today: morning reminder to lead lawyer', description: 'Sent at 8 am on the day.', trigger: 'HEARING_SCHEDULED', timing: rel('hearing.date', 0, '08:00'), actions: [email('lead', 'hearing_reminder_internal')] },
   { key: 'hearing_1d_team', name: 'Hearing tomorrow: brief the matter team', description: 'Sent at 5 pm the day before, with the last hearing’s notes.', trigger: 'HEARING_SCHEDULED', timing: rel('hearing.date', -1, '17:00'), actions: [email('matter_team', 'hearing_reminder_internal')] },
   { key: 'hearing_morning_client', name: 'Hearing today: morning reminder to the client', description: 'Sent at 7:30 am on the day.', trigger: 'HEARING_SCHEDULED', timing: rel('hearing.date', 0, '07:30'), actions: [email('client', 'hearing_today_client')] },
+  {
+    key: 'hearing_added_client',
+    name: 'Hearing added: tell the client',
+    description: 'Sent as soon as a hearing is added. Not sent when the date comes from recording the last hearing, which already updates the client.',
+    trigger: 'HEARING_SCHEDULED',
+    timing: { timing: 'immediate' },
+    conditions: HEARING_ADDED_DIRECTLY,
+    actions: [email('client', 'hearing_added_client')],
+  },
+  {
+    key: 'hearing_added_team',
+    name: 'Hearing added: tell the matter team',
+    description: 'Lawyers and clerks on the matter, as soon as a hearing is added.',
+    trigger: 'HEARING_SCHEDULED',
+    timing: { timing: 'immediate' },
+    conditions: HEARING_ADDED_DIRECTLY,
+    actions: [email('matter_team', 'hearing_added_internal')],
+  },
   {
     key: 'hearing_outcome_client',
     name: 'After a hearing: update the client with the next date',

@@ -200,7 +200,10 @@ export async function planForEvent(deps: Deps, db: Db, event: OutboxEvent, now: 
       db,
       sql`SELECT * FROM workflows WHERE organization_id = ${org} AND trigger_type = ${trigger} AND is_active ORDER BY created_at`,
     )
-  ).filter((wf) => !onlyWorkflowIds || onlyWorkflowIds.includes(wf.id));
+  )
+    .filter((wf) => !onlyWorkflowIds || onlyWorkflowIds.includes(wf.id))
+    // A reschedule moves date-relative reminders; recipes that fire when a hearing is added already ran for it.
+    .filter((wf) => event.event_type !== 'HEARING_CHANGED' || wf.trigger_config.timing === 'relative');
   if (workflows.length === 0) return 0;
 
   const baseRefs: ContextRefs = { ...target.refs, ...refsFromPayload(event.payload) };
@@ -266,7 +269,9 @@ export async function planUpcomingHearings(deps: Deps, db: Db, source: OutboxEve
   const ids = (
     await query<{ id: string }>(
       db,
-      sql`SELECT id FROM workflows WHERE organization_id = ${org} AND system_key = ANY(${systemKeys}) AND trigger_type = 'HEARING_SCHEDULED'`,
+      // Date-relative recipes only: "on add" emails are for hearings added from now on, never for those already on the calendar.
+      sql`SELECT id FROM workflows WHERE organization_id = ${org} AND system_key = ANY(${systemKeys}) AND trigger_type = 'HEARING_SCHEDULED'
+          AND trigger_config->>'timing' = 'relative'`,
     )
   ).map((w) => w.id);
   if (!ids.length) return 0;
@@ -301,6 +306,7 @@ function refsFromPayload(p: Record<string, unknown>): ContextRefs {
 function payloadFacts(event: Pick<OutboxEvent, 'event_type' | 'payload'>): Record<string, unknown> {
   const p = event.payload as Record<string, unknown>;
   if (event.event_type === 'HEARING_COMPLETED') return { 'hearing.result': p.result, 'hearing.next_date': p.nextHearingDate ?? '' };
+  if (event.event_type === 'HEARING_SCHEDULED') return { 'hearing.listed_from': p.followUp === true ? 'outcome' : 'new' };
   return {};
 }
 

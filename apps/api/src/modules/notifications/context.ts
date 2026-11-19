@@ -277,6 +277,7 @@ export async function buildContext(db: Db, organizationId: string, refs: Context
         courtroom: h.courtroom ?? '',
         courtroom_phrase: h.courtroom ? `, court room ${h.courtroom}` : '',
         hearing_type: h.hearing_type ?? '',
+        type_phrase: h.hearing_type ? `Purpose: ${h.hearing_type}` : '',
         outcome: h.outcome ?? '',
         client_summary: h.status === 'completed' || h.status === 'adjourned' ? clientUpdateText(h) : '',
         next_date: h.next_hearing_date ? dateText(h.next_hearing_date, true) : '',

@@ -440,3 +440,6 @@ export type DiaryRowDto = HearingDto & {
 };
 
 export type DiaryDto = { date: string; rows: DiaryRowDto[] };
+
+/** The printable month diary: every non-cancelled hearing in the month the caller can see, in date order. */
+export type DiaryMonthDto = { month: string; rows: HearingDto[] };

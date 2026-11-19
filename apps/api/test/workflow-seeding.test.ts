@@ -7,7 +7,8 @@ useDatabase();
 // Sorted in JS, not SQL: Postgres collation orders '_' differently from Array.prototype.sort.
 const keysOf = async (orgId: string) =>
   (await pool.query<{ system_key: string }>(`SELECT system_key FROM workflows WHERE organization_id = $1`, [orgId])).rows.map((r) => r.system_key).sort();
-const ORIGINAL_13 = DEFAULT_WORKFLOWS.map((d) => d.key).filter((k) => k !== 'hearing_1d_team' && k !== 'hearing_morning_client' && k !== 'instalment_link_3d');
+const ADDED_LATER = ['hearing_1d_team', 'hearing_morning_client', 'instalment_link_3d', 'hearing_added_client', 'hearing_added_team'];
+const ORIGINAL_13 = DEFAULT_WORKFLOWS.map((d) => d.key).filter((k) => !ADDED_LATER.includes(k));
 
 describe('default automation seeding', () => {
   it('a new firm gets every default once; running again adds nothing', async () => {
@@ -15,14 +16,14 @@ describe('default automation seeding', () => {
     await ensureDefaultsOnce(pool, orgId);
     await ensureDefaultsOnce(pool, orgId);
     expect(await keysOf(orgId)).toEqual(DEFAULT_WORKFLOWS.map((d) => d.key).sort());
-    expect(DEFAULT_WORKFLOWS).toHaveLength(16);
+    expect(DEFAULT_WORKFLOWS).toHaveLength(18);
   });
 
   it('an already-seeded firm gets only the defaults added since', async () => {
     const { orgId } = await createFirm('Old', [{ email: 'o@old.test', role: 'owner' }]);
     await pool.query(`UPDATE organizations SET settings = jsonb_build_object('seededWorkflowKeys', $2::jsonb) WHERE id = $1`, [orgId, JSON.stringify(ORIGINAL_13)]);
     await ensureDefaultsOnce(pool, orgId);
-    expect(await keysOf(orgId)).toEqual(['hearing_1d_team', 'hearing_morning_client', 'instalment_link_3d']);
+    expect(await keysOf(orgId)).toEqual([...ADDED_LATER].sort());
   });
 
   it('deleted default: a recipe the firm removed never comes back', async () => {

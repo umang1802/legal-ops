@@ -7,6 +7,7 @@ import {
   CalendarSync,
   CheckSquare,
   FileText,
+  Gavel,
   Home,
   Mail,
   Zap,
@@ -31,6 +32,7 @@ export const SIDEBAR: NavItem[] = [
 
 export const SETTINGS_NAV: NavItem[] = [
   { to: '/settings/firm', label: 'Firm settings', icon: Settings, permission: 'organization.manage' },
+  { to: '/settings/hearing-types', label: 'Hearing types', icon: Gavel, permission: 'organization.manage' },
   { to: '/settings/invoice-format', label: 'Invoice format', icon: FileText, permission: 'organization.manage', feature: 'billing' },
   { to: '/settings/automations', label: 'Automations', icon: Zap, permission: 'workflows.manage' },
   { to: '/settings/members', label: 'Team', icon: Users, permission: 'dashboard.view' },

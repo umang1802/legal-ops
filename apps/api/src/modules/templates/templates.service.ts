@@ -17,7 +17,7 @@ import { emailLayout, htmlToText, renderTemplate, sanitizeTemplateHtml, unknownV
 /** Variables a template may use: the documented catalogue plus internal helpers used by system templates. */
 const KNOWN = new Set([
   ...TEMPLATE_VARIABLES.flatMap((g) => g.vars.map((v) => v.name)),
-  ...['hearing.time_phrase', 'hearing.courtroom_phrase', 'hearing.when', 'hearing.result', 'hearing.hearing_type', 'invoice.reminder_phrase', 'payment.balance_phrase', 'task.due_phrase', 'task.matter_phrase', 'task.priority', 'recipient.name', 'case.title', 'case.status', 'matter.status', 'matter.priority', 'matter.practice_area', 'client.client_type', 'invite.role'],
+  ...['hearing.time_phrase', 'hearing.courtroom_phrase', 'hearing.when', 'hearing.result', 'hearing.hearing_type', 'hearing.type_phrase', 'invoice.reminder_phrase', 'payment.balance_phrase', 'task.due_phrase', 'task.matter_phrase', 'task.priority', 'recipient.name', 'case.title', 'case.status', 'matter.status', 'matter.priority', 'matter.practice_area', 'client.client_type', 'invite.role'],
   ...['links.hearing', 'links.invoice', 'links.task', 'links.matter', 'links.accept_invite', 'links.reset_password'],
 ]);
 

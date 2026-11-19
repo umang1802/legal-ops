@@ -84,6 +84,7 @@ export const PRACTICE_AREAS = [
   'Arbitration',
   'Constitutional',
   'Corporate',
+  'IPR',
   'Other',
 ] as const;
 
@@ -97,6 +98,7 @@ export const HEARING_STATUS_LABELS: Record<HearingStatus, string> = {
   unknown: 'Unknown',
 };
 
+/** The starting list of hearing types every firm gets. From then on each firm manages its own list (Settings → Hearing types). */
 export const HEARING_TYPES = [
   'Admission',
   'Arguments',

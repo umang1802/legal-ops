@@ -87,6 +87,7 @@ export const CONDITION_FIELDS: { field: string; label: string; triggers: readonl
   { field: 'client.client_type', label: 'Client type (person/company)', triggers: WORKFLOW_TRIGGERS },
   { field: 'case.status', label: 'Case status', triggers: ['CASE_CREATED', 'CASE_STATUS_CHANGED', 'HEARING_SCHEDULED', 'HEARING_COMPLETED', 'HEARING_CANCELLED'] },
   { field: 'hearing.hearing_type', label: 'Hearing type', triggers: ['HEARING_SCHEDULED', 'HEARING_COMPLETED', 'HEARING_CANCELLED'] },
+  { field: 'hearing.listed_from', label: 'How the hearing was added (new / outcome)', triggers: ['HEARING_SCHEDULED'] },
   { field: 'hearing.next_date', label: 'Next hearing date', triggers: ['HEARING_COMPLETED'] },
   { field: 'hearing.result', label: 'Hearing result (completed/adjourned)', triggers: ['HEARING_COMPLETED'] },
   { field: 'invoice.amount_due_rupees', label: 'Invoice amount due (₹)', triggers: ['INVOICE_CREATED', 'INVOICE_PAID'], numeric: true },

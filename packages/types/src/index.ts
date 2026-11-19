@@ -10,3 +10,4 @@ export * from './features.js';
 export * from './branding.js';
 export * from './online-payments.js';
 export * from './document-model.js';
+export * from './hearing-types.js';

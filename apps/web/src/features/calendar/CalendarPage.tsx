@@ -82,11 +82,18 @@ export function CalendarPage() {
         <div className="flex flex-wrap gap-2">
           {/* Reading, not editing: available to everyone who can see the calendar, including suspended firms. */}
           {hasFeature(me, 'diary') ? (
-            <Link to="/diary" target="_blank">
-              <Button variant="secondary" icon={<Printer className="size-4" />}>
-                Print diary
-              </Button>
-            </Link>
+            <>
+              <Link to="/diary" target="_blank">
+                <Button variant="secondary" icon={<Printer className="size-4" />}>
+                  Print diary
+                </Button>
+              </Link>
+              <Link to={`/diary/month?month=${anchor.slice(0, 7)}`} target="_blank">
+                <Button variant="secondary" icon={<Printer className="size-4" />}>
+                  Print month
+                </Button>
+              </Link>
+            </>
           ) : null}
           {canAct(me, 'hearings.manage') ? (
             <Button icon={<Plus className="size-4" />} onClick={() => setScheduling(true)}>

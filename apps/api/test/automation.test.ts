@@ -6,7 +6,7 @@ import { ProviderError, type EmailMessage, type EmailProvider } from '../src/mod
 import { setFirmFeature } from '../src/modules/features/features.service.js';
 import { setFirmFeatureAsAdmin } from '../src/modules/platform/platform-firms.service.js';
 import { tick } from '../src/modules/workflows/processor.js';
-import { addDays, buildApp, deps as baseDeps, loginAs, pool, practiceFixture, type Session, useDatabase } from './helpers.js';
+import { addDays, buildApp, deps as baseDeps, loginAs, pool, practiceFixture, quietHearingAddedMail, type Session, useDatabase } from './helpers.js';
 import { createPlatformAdmin } from './platform-helpers.js';
 
 useDatabase();
@@ -31,8 +31,9 @@ const post = (s: Session, path: string, body: object = {}) => s.agent.post(`/api
 /** A firm-local (IST) wall-clock instant. */
 const ist = (date: string, time: string) => new Date(`${date}T${time}:00+05:30`);
 
-async function setup() {
+async function setup(opts: { hearingAddedMail?: boolean } = {}) {
   const fx = await practiceFixture(app);
+  if (!opts.hearingAddedMail) await quietHearingAddedMail(fx.firm.orgId);
   const clientId = (await pool.query(`SELECT client_id FROM matters WHERE id = $1`, [fx.main.matterId])).rows[0].client_id as string;
   await pool.query(`UPDATE clients SET email = 'raj@client.test' WHERE id = $1`, [clientId]);
   const email = new CaptureEmail();
@@ -428,7 +429,7 @@ describe('automations: settings API', () => {
     const { owner, main, today } = await setup();
     const list = await owner.agent.get('/api/v1/workflows');
     expect(list.status).toBe(200);
-    expect(list.body.data).toHaveLength(16);
+    expect(list.body.data).toHaveLength(18);
     const dayBefore = list.body.data.find((w: { systemKey: string }) => w.systemKey === 'hearing_1d_client');
 
     await post(owner, '/hearings', { caseId: main.caseId, scheduledDate: addDays(today, 6) });

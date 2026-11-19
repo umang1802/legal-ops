@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Deps } from '../src/deps.js';
 import type { EmailMessage, EmailProvider } from '../src/modules/notifications/providers.js';
 import { tick } from '../src/modules/workflows/processor.js';
-import { addDays, buildApp, createFirm, deps as baseDeps, loginAs, pool, practiceFixture, useDatabase } from './helpers.js';
+import { addDays, buildApp, createFirm, deps as baseDeps, loginAs, pool, practiceFixture, quietHearingAddedMail, useDatabase } from './helpers.js';
 import { createPlatformAdmin, platformLogin } from './platform-helpers.js';
 
 useDatabase();
@@ -70,6 +70,7 @@ describe('suspended firms are read-only', () => {
 
   it('reactivation: reminders due during suspension are skipped, nothing stale is sent, later ones resume', async () => {
     const { firm, owner, main, today } = await practiceFixture(app);
+    await quietHearingAddedMail(firm.orgId);
     await pool.query(`UPDATE clients SET email = 'raj@client.test' WHERE organization_id = $1`, [firm.orgId]);
     const email = new CaptureEmail();
     const deps = { ...baseDeps, email } as Deps;
@@ -104,6 +105,7 @@ describe('suspended firms are read-only', () => {
 
   it('reactivation skips actions that fell due during suspension even if the worker never ran', async () => {
     const { firm, owner, main, today } = await practiceFixture(app);
+    await quietHearingAddedMail(firm.orgId);
     await pool.query(`UPDATE clients SET email = 'raj@client.test' WHERE organization_id = $1`, [firm.orgId]);
     const email = new CaptureEmail();
     const deps = { ...baseDeps, email } as Deps;

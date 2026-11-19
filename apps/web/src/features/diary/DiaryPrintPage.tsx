@@ -85,6 +85,9 @@ export function DiaryPrintPage() {
         <Link to="/calendar" className="mr-auto text-sm text-brand-700 hover:underline">
           ← Calendar
         </Link>
+        <Link to={`/diary/month?month=${date.slice(0, 7)}`} className="text-sm text-brand-700 hover:underline">
+          Month view
+        </Link>
         <label className="text-sm">
           <span className="block text-xs text-gray-600">Date</span>
           <input type="date" value={date} onChange={(e) => e.target.value && set('date', e.target.value)} className="rounded-md border border-gray-300 px-2 py-1.5" />

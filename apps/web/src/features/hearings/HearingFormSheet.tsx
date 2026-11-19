@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { HEARING_TYPES, type CaseListItemDto, type HearingDto } from '@legalops/types';
-import { Alert, Button, Combobox, Sheet, TextAreaField, TextField, type ComboOption } from '@legalops/ui';
+import type { CaseListItemDto, HearingDto, HearingTypeDto } from '@legalops/types';
+import { Alert, Button, Combobox, SelectField, Sheet, TextAreaField, TextField, type ComboOption } from '@legalops/ui';
 import { createHearingSchema, updateHearingSchema } from '@legalops/validation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
@@ -80,6 +80,8 @@ export function HearingFormSheet({
   const [kase, setKase] = useState<ComboOption | null>(null);
   const [caseError, setCaseError] = useState<string>();
   const form = useForm<FormValues>({ resolver: zodResolver(formSchema) });
+  // Only the firm's own list can be chosen from: types are added by the firm (Settings → Hearing types), not typed in here.
+  const types = useQuery({ queryKey: ['hearing-types'], queryFn: () => api.get<HearingTypeDto[]>('/hearing-types'), enabled: open, staleTime: 60_000 });
 
   useEffect(() => {
     if (!open) return;
@@ -177,18 +179,21 @@ export function HearingFormSheet({
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <TextField label="Court room" placeholder="e.g. 12" {...form.register('courtroom')} />
-          <TextField
+          <SelectField
             label="Hearing type"
-            list="hearing-types"
-            placeholder="e.g. Arguments"
+            error={errors.hearingType?.message}
+            hint={types.isError ? 'Couldn’t load your hearing types. Refresh to try again.' : undefined}
+            options={[
+              { value: '', label: 'Not set' },
+              ...(types.data ?? []).filter((t) => t.isActive).map((t) => ({ value: t.name, label: t.name })),
+              // A hearing saved before the firm tidied its list keeps showing (and keeping) its old value.
+              ...(existing?.hearingType && !(types.data ?? []).some((t) => t.isActive && t.name.toLowerCase() === existing.hearingType!.toLowerCase())
+                ? [{ value: existing.hearingType, label: `${existing.hearingType} (no longer in your list)` }]
+                : []),
+            ]}
             {...form.register('hearingType')}
           />
         </div>
-        <datalist id="hearing-types">
-          {HEARING_TYPES.map((t) => (
-            <option key={t} value={t} />
-          ))}
-        </datalist>
         <TextField label="Judge / bench" {...form.register('benchJudge')} />
         <TextAreaField label="Notes" hint="Internal. Not shown to the client." {...form.register('notes')} />
       </form>

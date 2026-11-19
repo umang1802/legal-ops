@@ -23,6 +23,7 @@ import { MorePage } from './features/more/MorePage.js';
 import { FirmSettingsPage } from './features/settings/FirmSettingsPage.js';
 import { MembersPage } from './features/settings/MembersPage.js';
 import { CalendarSyncPage } from './features/settings/CalendarSyncPage.js';
+import { HearingTypesPage } from './features/settings/HearingTypesPage.js';
 import { InvoiceFormatPage } from './features/settings/InvoiceFormatPage.js';
 
 // Route-level code splitting: billing, print views and the calendar load on first visit.
@@ -62,6 +63,9 @@ const InvoicePrintPage = lazy(() =>
 const PlatformApp = lazy(() => import('./platform/PlatformApp.js').then((m) => ({ default: m.PlatformApp })));
 const DiaryPrintPage = lazy(() =>
   import('./features/diary/DiaryPrintPage.js').then((m) => ({ default: m.DiaryPrintPage })),
+);
+const DiaryMonthPrintPage = lazy(() =>
+  import('./features/diary/DiaryMonthPrintPage.js').then((m) => ({ default: m.DiaryMonthPrintPage })),
 );
 const MatterHistoryPrintPage = lazy(() =>
   import('./features/diary/MatterHistoryPrintPage.js').then((m) => ({ default: m.MatterHistoryPrintPage })),
@@ -110,6 +114,17 @@ const router = createBrowserRouter([
           <RequirePermission permission="matters.view">
             <RequireFeature feature="diary">
               <DiaryPrintPage />
+            </RequireFeature>
+          </RequirePermission>
+        ),
+      },
+      {
+        // Printable month diary: the whole month, day by day (also outside the app shell).
+        path: '/diary/month',
+        element: (
+          <RequirePermission permission="matters.view">
+            <RequireFeature feature="diary">
+              <DiaryMonthPrintPage />
             </RequireFeature>
           </RequirePermission>
         ),
@@ -195,6 +210,14 @@ const router = createBrowserRouter([
             element: (
               <RequirePermission permission="organization.manage">
                 <FirmSettingsPage />
+              </RequirePermission>
+            ),
+          },
+          {
+            path: '/settings/hearing-types',
+            element: (
+              <RequirePermission permission="organization.manage">
+                <HearingTypesPage />
               </RequirePermission>
             ),
           },

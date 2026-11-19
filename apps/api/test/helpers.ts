@@ -156,3 +156,13 @@ export async function practiceFixture(app: Server) {
   const privateMatter = await make('Partner only', 'owner@a.test');
   return { firm, uid, owner, main, privateMatter, today: await orgTodayFor(firm.orgId) };
 }
+
+/**
+ * Offers the default automations and switches the two "hearing added" emails off, so a test about reminders sees only
+ * reminders. (Those emails go out the moment a hearing is added; they have their own tests.)
+ */
+export async function quietHearingAddedMail(orgId: string): Promise<void> {
+  const { ensureDefaultsOnce } = await import('../src/modules/workflows/defaults.js');
+  await ensureDefaultsOnce(pool, orgId);
+  await pool.query(`UPDATE workflows SET is_active = false WHERE organization_id = $1 AND system_key IN ('hearing_added_client', 'hearing_added_team')`, [orgId]);
+}

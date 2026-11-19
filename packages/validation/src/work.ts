@@ -75,6 +75,14 @@ export const diarySchema = z
   .object({ date: isoDate.optional(), scope: z.enum(['all', 'mine']).default('all') })
   .strict();
 
+/** The printable month diary: one calendar month (default: this month in the firm's timezone); whole firm or only my matters. */
+export const diaryMonthSchema = z
+  .object({
+    month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, { error: 'Use a month like 2026-11' }).optional(),
+    scope: z.enum(['all', 'mine']).default('all'),
+  })
+  .strict();
+
 export const listHearingsSchema = z
   .object({
     from: isoDate.optional(),
