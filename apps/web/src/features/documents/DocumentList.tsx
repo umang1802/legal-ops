@@ -1,4 +1,4 @@
-import { DOCUMENT_CATEGORY_LABELS, type DocumentDto } from '@legalops/types';
+import type { DocumentDto } from '@legalops/types';
 import { Alert, Badge, Button, EmptyState, Sheet, SkeletonList } from '@legalops/ui';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Download, FileText, RotateCcw, Trash2 } from 'lucide-react';
@@ -70,7 +70,7 @@ export function DocumentList({ docs, loading, emptyHint }: { docs: DocumentDto[]
                     .join(' · ')}
                 </p>
               </div>
-              <Badge>{DOCUMENT_CATEGORY_LABELS[d.category]}</Badge>
+              {d.category ? <Badge>{d.category}</Badge> : null}
               {deleted ? (
                 <>
                   <Badge tone="danger">Deleted</Badge>

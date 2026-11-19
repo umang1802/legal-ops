@@ -1,11 +1,11 @@
-import type { HearingTypeDto } from '@legalops/types';
+import { METADATA_LISTS, metadataList, type MetadataListKey, type MetadataOptionDto } from '@legalops/types';
 import { Alert, Button, Card, CardBody, CardHeader, PageHeader, SkeletonList, TextField } from '@legalops/ui';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
+import { NavLink, Navigate, useParams } from 'react-router';
 import { api, ApiError } from '../../lib/api.js';
-
-const KEY = ['hearing-types'];
+import { useMetadataOptions } from '../../lib/metadata.js';
 
 function Mover({
   name,
@@ -34,8 +34,8 @@ function Mover({
   );
 }
 
-function TypeRow({
-  t,
+function Row({
+  o,
   first,
   last,
   busy,
@@ -43,7 +43,7 @@ function TypeRow({
   onToggle,
   onMove,
 }: {
-  t: HearingTypeDto;
+  o: MetadataOptionDto;
   first: boolean;
   last: boolean;
   busy: boolean;
@@ -51,17 +51,17 @@ function TypeRow({
   onToggle: () => void;
   onMove: (by: -1 | 1) => void;
 }) {
-  const [value, setValue] = useState(t.name);
-  useEffect(() => setValue(t.name), [t.name]);
+  const [value, setValue] = useState(o.name);
+  useEffect(() => setValue(o.name), [o.name]);
   const commit = () => {
     const next = value.trim();
-    if (!next) setValue(t.name);
-    else if (next !== t.name) onRename(next);
+    if (!next) setValue(o.name);
+    else if (next !== o.name) onRename(next);
   };
   return (
     <li className="flex flex-wrap items-center gap-2 px-3 py-2 sm:px-4">
       <input
-        aria-label={`Name of ${t.name}`}
+        aria-label={`Name of ${o.name}`}
         className="h-10 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 text-sm hover:border-line focus:border-line focus:bg-surface focus:outline-2 focus:outline-brand-600 disabled:opacity-60"
         value={value}
         maxLength={100}
@@ -70,30 +70,36 @@ function TypeRow({
         onBlur={commit}
         onKeyDown={(e) => {
           if (e.key === 'Enter') e.currentTarget.blur();
-          if (e.key === 'Escape') setValue(t.name);
+          if (e.key === 'Escape') setValue(o.name);
         }}
       />
       <span className="text-xs text-muted tabular-nums">
-        {t.inUse === 0 ? 'Not used yet' : `${t.inUse} hearing${t.inUse === 1 ? '' : 's'}`}
+        {o.inUse === 0 ? 'Not used yet' : `Used ${o.inUse} time${o.inUse === 1 ? '' : 's'}`}
       </span>
-      {t.isActive ? (
-        <Mover name={t.name} first={first} last={last} onUp={() => onMove(-1)} onDown={() => onMove(1)} />
+      {o.isActive ? (
+        <Mover name={o.name} first={first} last={last} onUp={() => onMove(-1)} onDown={() => onMove(1)} />
       ) : null}
       <Button size="sm" variant="ghost" disabled={busy} onClick={onToggle}>
-        {t.isActive ? 'Archive' : 'Restore'}
+        {o.isActive ? 'Archive' : 'Restore'}
       </Button>
     </li>
   );
 }
 
-/** The firm's list of hearing types. Only firm managers can open this page; the hearing form offers exactly the active ones. */
-export function HearingTypesPage() {
+/** One list: add, rename, reorder, archive. The forms elsewhere offer exactly the active entries. */
+function ListEditor({ list }: { list: MetadataListKey }) {
+  const meta = metadataList(list)!;
   const qc = useQueryClient();
-  const list = useQuery({ queryKey: KEY, queryFn: () => api.get<HearingTypeDto[]>('/hearing-types') });
+  const q = useMetadataOptions(list);
   const [name, setName] = useState('');
-  const refresh = () => void qc.invalidateQueries({ queryKey: KEY });
+  const [prev, setPrev] = useState(list);
+  if (prev !== list) {
+    setPrev(list);
+    setName('');
+  }
+  const refresh = () => void qc.invalidateQueries({ queryKey: ['metadata', list] });
   const add = useMutation({
-    mutationFn: (n: string) => api.post<HearingTypeDto>('/hearing-types', { name: n }),
+    mutationFn: (n: string) => api.post<MetadataOptionDto>(`/metadata/${list}`, { name: n }),
     onSuccess: () => {
       setName('');
       refresh();
@@ -101,28 +107,27 @@ export function HearingTypesPage() {
   });
   const patch = useMutation({
     mutationFn: ({ id, body }: { id: string; body: { name?: string; isActive?: boolean } }) =>
-      api.patch<HearingTypeDto>(`/hearing-types/${id}`, body),
+      api.patch<MetadataOptionDto>(`/metadata/${list}/${id}`, body),
     onSuccess: refresh,
   });
   const reorder = useMutation({
-    mutationFn: (ids: string[]) => api.post<HearingTypeDto[]>('/hearing-types/order', { ids }),
-    onSuccess: (rows) => qc.setQueryData(KEY, rows),
+    mutationFn: (ids: string[]) => api.post<MetadataOptionDto[]>(`/metadata/${list}/order`, { ids }),
+    onSuccess: (rows) => qc.setQueryData(['metadata', list], rows),
   });
 
-  if (list.isPending) return <SkeletonList rows={6} />;
-  if (list.isError)
-    return <Alert tone="danger">Couldn’t load your hearing types. Refresh to try again.</Alert>;
+  if (q.isPending) return <SkeletonList rows={6} />;
+  if (q.isError) return <Alert tone="danger">Couldn’t load this list. Refresh to try again.</Alert>;
 
-  const active = list.data.filter((t) => t.isActive);
-  const archived = list.data.filter((t) => !t.isActive);
+  const active = q.data.filter((o) => o.isActive);
+  const archived = q.data.filter((o) => !o.isActive);
   const err = [add.error, patch.error, reorder.error].find((e) => e instanceof ApiError) as
     ApiError | undefined;
   const busy = patch.isPending || reorder.isPending;
   const move = (i: number, by: -1 | 1) => {
-    const ids = active.map((t) => t.id);
+    const ids = active.map((o) => o.id);
     const [id] = ids.splice(i, 1);
     ids.splice(i + by, 0, id!);
-    reorder.mutate([...ids, ...archived.map((t) => t.id)]);
+    reorder.mutate([...ids, ...archived.map((o) => o.id)]);
   };
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -131,14 +136,9 @@ export function HearingTypesPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Hearing types"
-        description="The types your team can choose when scheduling a hearing. Only your firm’s managers can add or change them."
-      />
       {err ? <Alert tone="danger">{err.message}</Alert> : null}
-
       <Card>
-        <CardHeader title="Add a hearing type" />
+        <CardHeader title={`Add a ${meta.singular}`} description={meta.description} />
         <CardBody>
           <form onSubmit={submit} className="flex flex-wrap items-end gap-2">
             <div className="min-w-56 flex-1">
@@ -146,7 +146,7 @@ export function HearingTypesPage() {
                 label="Name"
                 value={name}
                 maxLength={100}
-                placeholder="e.g. Pronouncement of judgment"
+                placeholder={meta.placeholder}
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
@@ -159,24 +159,24 @@ export function HearingTypesPage() {
 
       <Card>
         <CardHeader
-          title="Your hearing types"
-          description="Click a name to rename it. Renaming also updates the hearings that use it."
+          title={meta.title}
+          description="Click a name to rename it. Renaming also updates everything that already uses it."
         />
         {active.length === 0 ? (
           <CardBody className="text-sm text-muted">
-            No hearing types yet. Add one above; until you do, hearings can be saved without a type.
+            Nothing here yet. Add one above. Until you do, this field can be left empty.
           </CardBody>
         ) : (
           <ul className="divide-y divide-line">
-            {active.map((t, i) => (
-              <TypeRow
-                key={t.id}
-                t={t}
+            {active.map((o, i) => (
+              <Row
+                key={o.id}
+                o={o}
                 first={i === 0}
                 last={i === active.length - 1}
                 busy={busy}
-                onRename={(n) => patch.mutate({ id: t.id, body: { name: n } })}
-                onToggle={() => patch.mutate({ id: t.id, body: { isActive: false } })}
+                onRename={(n) => patch.mutate({ id: o.id, body: { name: n } })}
+                onToggle={() => patch.mutate({ id: o.id, body: { isActive: false } })}
                 onMove={(by) => move(i, by)}
               />
             ))}
@@ -190,24 +190,56 @@ export function HearingTypesPage() {
             Archived ({archived.length})
           </summary>
           <p className="px-4 pb-2 text-sm text-muted sm:px-5">
-            Hidden from the hearing form. Hearings that already use one keep it.
+            Hidden from forms. Records that already use one keep it.
           </p>
           <ul className="divide-y divide-line border-t border-line">
-            {archived.map((t) => (
-              <TypeRow
-                key={t.id}
-                t={t}
+            {archived.map((o) => (
+              <Row
+                key={o.id}
+                o={o}
                 first
                 last
                 busy={busy}
-                onRename={(n) => patch.mutate({ id: t.id, body: { name: n } })}
-                onToggle={() => patch.mutate({ id: t.id, body: { isActive: true } })}
+                onRename={(n) => patch.mutate({ id: o.id, body: { name: n } })}
+                onToggle={() => patch.mutate({ id: o.id, body: { isActive: true } })}
                 onMove={() => undefined}
               />
             ))}
           </ul>
         </details>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Settings → Metadata: the pick-lists a firm keeps for itself, one sub-option each. Only firm managers can open it; the
+ * forms elsewhere (hearing, file upload, matter, expense) offer the active entries.
+ */
+export function MetadataPage() {
+  const { list } = useParams();
+  const current = metadataList(list ?? '');
+  if (!current) return <Navigate to={`/settings/metadata/${METADATA_LISTS[0].key}`} replace />;
+  return (
+    <div className="space-y-4">
+      <PageHeader
+        title="Metadata"
+        description="The lists your team picks from. Add what your firm needs; only your firm’s managers can change them."
+      />
+      <nav aria-label="Lists" className="flex flex-wrap gap-2">
+        {METADATA_LISTS.map((l) => (
+          <NavLink
+            key={l.key}
+            to={`/settings/metadata/${l.key}`}
+            className={({ isActive }) =>
+              `rounded-lg border px-3 py-2 text-sm font-medium ${isActive ? 'border-brand-600 bg-brand-50 text-brand-800' : 'border-line bg-surface text-ink-soft hover:bg-subtle'}`
+            }
+          >
+            {l.title}
+          </NavLink>
+        ))}
+      </nav>
+      <ListEditor list={current.key} />
     </div>
   );
 }

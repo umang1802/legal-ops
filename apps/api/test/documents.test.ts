@@ -23,12 +23,12 @@ describe('documents', () => {
     const { main } = await practiceFixture(app);
     const clerk = await loginAs(app, 'clerk@a.test');
     const size = 40 * 1024 * 1024;
-    const { start, done } = await upload(clerk, { matterId: main.matterId, category: 'pleadings', name: 'Plaint.pdf', sizeBytes: size });
+    const { start, done } = await upload(clerk, { matterId: main.matterId, category: 'Pleadings', name: 'Plaint.pdf', sizeBytes: size });
     expect(start.status).toBe(201);
     expect(start.body.data.partSize).toBe(DOCUMENT_PART_BYTES);
     expect(start.body.data.partUrls).toHaveLength(3);
     expect(done!.status).toBe(200);
-    expect(done!.body.data).toMatchObject({ name: 'Plaint.pdf', category: 'pleadings', mimeType: 'application/pdf', sizeBytes: size, status: 'available', uploadedBy: { firstName: 'clerk' } });
+    expect(done!.body.data).toMatchObject({ name: 'Plaint.pdf', category: 'Pleadings', mimeType: 'application/pdf', sizeBytes: size, status: 'available', uploadedBy: { firstName: 'clerk' } });
 
     const list = await clerk.agent.get('/api/v1/documents').query({ matterId: main.matterId });
     expect(list.body.data.map((d: { name: string }) => d.name)).toEqual(['Plaint.pdf']);
@@ -75,8 +75,8 @@ describe('documents', () => {
   it('attaches an order to a hearing (case filled in from the hearing); refuses a hearing from another matter', async () => {
     const { owner, main, privateMatter, today } = await practiceFixture(app);
     const h = await post(owner, '/hearings', { caseId: main.caseId, scheduledDate: today });
-    const { done } = await upload(owner, { matterId: main.matterId, hearingId: h.body.data.id, category: 'orders', name: 'Order.pdf', sizeBytes: 500 });
-    expect(done!.body.data).toMatchObject({ hearingId: h.body.data.id, caseId: main.caseId, hearingDate: today, category: 'orders' });
+    const { done } = await upload(owner, { matterId: main.matterId, hearingId: h.body.data.id, category: 'Orders & judgments', name: 'Order.pdf', sizeBytes: 500 });
+    expect(done!.body.data).toMatchObject({ hearingId: h.body.data.id, caseId: main.caseId, hearingDate: today, category: 'Orders & judgments' });
     expect((await owner.agent.get('/api/v1/documents').query({ hearingId: h.body.data.id })).body.data).toHaveLength(1);
 
     const wrong = await post(owner, '/documents/uploads', { matterId: privateMatter.matterId, hearingId: h.body.data.id, name: 'x.pdf', sizeBytes: 5 });
@@ -87,7 +87,7 @@ describe('documents', () => {
 
   it('visibility follows the matter; finance can view and download but not upload', async () => {
     const { owner, main } = await practiceFixture(app);
-    const { done } = await upload(owner, { matterId: main.matterId, name: 'Evidence.jpg', category: 'evidence', sizeBytes: 2048 });
+    const { done } = await upload(owner, { matterId: main.matterId, name: 'Evidence.jpg', category: 'Evidence', sizeBytes: 2048 });
     const id = done!.body.data.id;
 
     const l2 = await loginAs(app, 'l2@a.test'); // lawyer, not on this matter
@@ -125,10 +125,10 @@ describe('documents', () => {
 
   it('filters by category and searches file names', async () => {
     const { owner, main } = await practiceFixture(app);
-    await upload(owner, { matterId: main.matterId, name: 'Written statement.pdf', category: 'pleadings', sizeBytes: 10 });
-    await upload(owner, { matterId: main.matterId, name: 'Interim order 12 Oct.pdf', category: 'orders', sizeBytes: 10 });
+    await upload(owner, { matterId: main.matterId, name: 'Written statement.pdf', category: 'Pleadings', sizeBytes: 10 });
+    await upload(owner, { matterId: main.matterId, name: 'Interim order 12 Oct.pdf', category: 'Orders & judgments', sizeBytes: 10 });
     const q = (query: Record<string, string>) => owner.agent.get('/api/v1/documents').query({ matterId: main.matterId, ...query });
-    expect((await q({ category: 'orders' })).body.data.map((d: { name: string }) => d.name)).toEqual(['Interim order 12 Oct.pdf']);
+    expect((await q({ category: 'Orders & judgments' })).body.data.map((d: { name: string }) => d.name)).toEqual(['Interim order 12 Oct.pdf']);
     expect((await q({ search: 'statement' })).body.data.map((d: { name: string }) => d.name)).toEqual(['Written statement.pdf']);
     expect((await q({ search: '100%' })).body.data).toEqual([]);
   });

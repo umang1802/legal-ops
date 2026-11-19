@@ -1,4 +1,4 @@
-import { DOCUMENT_CATEGORIES, DOCUMENT_TYPES, documentExtension, MAX_DOCUMENT_BYTES } from '@legalops/types';
+import { DOCUMENT_TYPES, documentExtension, MAX_DOCUMENT_BYTES } from '@legalops/types';
 import { z } from 'zod';
 import { uuidSchema } from './common.js';
 
@@ -9,7 +9,8 @@ export const startDocumentUploadSchema = z
     matterId: uuidSchema,
     caseId: uuidSchema.nullable().optional(),
     hearingId: uuidSchema.nullable().optional(),
-    category: z.enum(DOCUMENT_CATEGORIES).default('other'),
+    /** A name from the firm's file categories. Optional: leave it out for an uncategorised file. */
+    category: z.string().trim().max(100).nullable().optional(),
     name: z
       .string()
       .trim()
@@ -38,7 +39,7 @@ export const listDocumentsSchema = z
     matterId: uuidSchema.optional(),
     hearingId: uuidSchema.optional(),
     caseId: uuidSchema.optional(),
-    category: z.enum(DOCUMENT_CATEGORIES).optional(),
+    category: z.string().trim().max(100).optional(),
     search: z.string().trim().max(200).optional(),
     includeDeleted: z.coerce.boolean().default(false),
   })

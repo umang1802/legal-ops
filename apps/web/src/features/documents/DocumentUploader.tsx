@@ -1,23 +1,22 @@
 import {
-  DOCUMENT_CATEGORIES,
-  DOCUMENT_CATEGORY_LABELS,
   DOCUMENT_TYPES,
   documentExtension,
   MAX_DOCUMENT_BYTES,
   type CaseSummaryDto,
-  type DocumentCategory,
 } from '@legalops/types';
 import { Button, cn } from '@legalops/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, FolderUp, RotateCw, Upload, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../lib/api.js';
+import { useMetadataOptions } from '../../lib/metadata.js';
 import { formatBytes, UploadCancelled, uploadDocument } from '../../lib/upload.js';
 
 type Item = {
   id: number;
   file: File;
-  category: DocumentCategory;
+  /** Empty means no category. */
+  category: string;
   caseId: string;
   state: 'invalid' | 'queued' | 'uploading' | 'done' | 'failed';
   progress: number;
@@ -43,18 +42,20 @@ export function DocumentUploader({
   matterId,
   cases,
   hearingId,
-  defaultCategory = 'other',
+  defaultCategory = '',
   onDone,
 }: {
   matterId: string;
   cases: CaseSummaryDto[];
   hearingId?: string;
-  defaultCategory?: DocumentCategory;
+  defaultCategory?: string;
   onDone?: () => void;
 }) {
   const qc = useQueryClient();
   const [items, setItems] = useState<Item[]>([]);
-  const [batchCategory, setBatchCategory] = useState<DocumentCategory>(defaultCategory);
+  const [batchCategory, setBatchCategory] = useState(defaultCategory);
+  const categoryList = useMetadataOptions('document_category');
+  const categories = (categoryList.data ?? []).filter((c) => c.isActive);
   const [batchCase, setBatchCase] = useState(cases.length === 1 ? cases[0]!.id : '');
   const [dragging, setDragging] = useState(false);
   const seq = useRef(0);
@@ -84,7 +85,7 @@ export function DocumentUploader({
       update(item.id, { state: 'uploading', progress: 0, error: undefined, controller });
       uploadDocument(
         item.file,
-        { matterId, caseId: hearingId ? null : item.caseId || null, hearingId: hearingId ?? null, category: item.category },
+        { matterId, caseId: hearingId ? null : item.caseId || null, hearingId: hearingId ?? null, category: item.category || null },
         (p) => update(item.id, { progress: p }),
         controller.signal,
       )
@@ -147,10 +148,11 @@ export function DocumentUploader({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="text-sm">
           <span className="mb-1 block font-medium">Category for new files</span>
-          <select value={batchCategory} onChange={(e) => setBatchCategory(e.target.value as DocumentCategory)} className="h-10 w-full rounded-lg border border-line bg-surface px-3">
-            {DOCUMENT_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {DOCUMENT_CATEGORY_LABELS[c]}
+          <select value={batchCategory} onChange={(e) => setBatchCategory(e.target.value)} className="h-10 w-full rounded-lg border border-line bg-surface px-3">
+            <option value="">No category</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.name}>
+                {c.name}
               </option>
             ))}
           </select>
@@ -188,12 +190,13 @@ export function DocumentUploader({
                       aria-label={`Category for ${i.file.name}`}
                       value={i.category}
                       disabled={i.state === 'invalid'}
-                      onChange={(e) => update(i.id, { category: e.target.value as DocumentCategory })}
+                      onChange={(e) => update(i.id, { category: e.target.value })}
                       className="h-8 max-w-40 rounded-md border border-line bg-surface px-2 text-xs"
                     >
-                      {DOCUMENT_CATEGORIES.map((c) => (
-                        <option key={c} value={c}>
-                          {DOCUMENT_CATEGORY_LABELS[c]}
+                      <option value="">No category</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.name}>
+                          {c.name}
                         </option>
                       ))}
                     </select>

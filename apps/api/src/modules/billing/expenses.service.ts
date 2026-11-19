@@ -14,6 +14,7 @@ import { conflict, notFound, validationError } from '../../http/errors.js';
 import { iso } from '../../http/query-helpers.js';
 import { assertMatterVisible, matterVisible } from '../access/matter-scope.js';
 import { recordAudit } from '../audit/audit.service.js';
+import { resolveOption } from '../metadata/metadata.service.js';
 import { addTimelineEvent } from '../timeline/timeline.service.js';
 import { rupees } from './invoices.service.js';
 import { postLedger } from './ledger.js';
@@ -103,11 +104,12 @@ export async function createExpense(
           { path: 'caseId', message: 'Mismatched case' },
         ]);
     }
+    const category = await resolveOption(tx, ctx.organizationId, 'expense_category', input.category, 'category');
     const row = await queryOne<{ id: string; client_id: string }>(
       tx,
       sql`INSERT INTO expenses (organization_id, matter_id, case_id, category, amount, expense_date, description, vendor_name,
                                 billable_to_client, reimbursable, created_by)
-          VALUES (${ctx.organizationId}, ${input.matterId}, ${input.caseId ?? null}, ${input.category ?? null}, ${input.amount},
+          VALUES (${ctx.organizationId}, ${input.matterId}, ${input.caseId ?? null}, ${category}, ${input.amount},
                   ${input.expenseDate}, ${input.description ?? null}, ${input.vendorName ?? null}, ${input.billableToClient},
                   ${input.reimbursable}, ${ctx.userId})
           RETURNING id, (SELECT client_id FROM matters WHERE id = ${input.matterId}) AS client_id`,
@@ -179,13 +181,15 @@ export async function updateExpense(
       // Amount changes are a void + new expense, so the ledger stays a true history.
       throw conflict('To change the amount, void this expense and record a new one');
     }
+    const changes: Record<string, unknown> = { ...input };
+    if (input.category !== undefined) changes.category = await resolveOption(tx, ctx.organizationId, 'expense_category', input.category, 'category', before.category);
     const keys = (Object.keys(COLUMNS) as (keyof typeof COLUMNS)[]).filter(
-      (k) => input[k] !== undefined && k !== 'amount',
+      (k) => changes[k] !== undefined && k !== 'amount',
     );
     if (keys.length)
       await query(
         tx,
-        sql`UPDATE expenses SET ${sql.join(keys.map((k) => sql`${sql.raw(COLUMNS[k])} = ${input[k]}`))} WHERE id = ${id}`,
+        sql`UPDATE expenses SET ${sql.join(keys.map((k) => sql`${sql.raw(COLUMNS[k])} = ${changes[k]}`))} WHERE id = ${id}`,
       );
     await recordAudit(tx, {
       organizationId: ctx.organizationId,

@@ -18,7 +18,7 @@ import { iso } from '../../http/query-helpers.js';
 import { matterVisible } from '../access/matter-scope.js';
 import { recordAudit } from '../audit/audit.service.js';
 import { loadVisibleCase } from '../cases/cases.service.js';
-import { resolveHearingType } from './hearing-types.service.js';
+import { resolveOption } from '../metadata/metadata.service.js';
 import { emitEvent } from '../outbox/outbox.service.js';
 import { createTaskInTx } from '../tasks/tasks.service.js';
 import { addTimelineEvent } from '../timeline/timeline.service.js';
@@ -319,7 +319,7 @@ export async function createHearing(
 ): Promise<HearingDto> {
   return withTransaction(deps.pool, async (tx) => {
     const c = await loadVisibleCase(tx, ctx, input.caseId);
-    const hearingType = await resolveHearingType(tx, ctx.organizationId, input.hearingType);
+    const hearingType = await resolveOption(tx, ctx.organizationId, 'hearing_type', input.hearingType, 'hearingType');
     const id = await insertHearing(
       tx,
       ctx,
@@ -357,7 +357,7 @@ export async function updateHearing(
       );
     }
     const changes: Record<string, unknown> = { ...input };
-    if (input.hearingType !== undefined) changes.hearingType = await resolveHearingType(tx, ctx.organizationId, input.hearingType, before.hearing_type);
+    if (input.hearingType !== undefined) changes.hearingType = await resolveOption(tx, ctx.organizationId, 'hearing_type', input.hearingType, 'hearingType', before.hearing_type);
     const keys = (Object.keys(changes) as (keyof typeof HEARING_COLUMNS)[]).filter((k) => changes[k] !== undefined);
     if (keys.length > 0) {
       await query(

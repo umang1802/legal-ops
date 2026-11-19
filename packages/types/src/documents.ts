@@ -1,17 +1,15 @@
 import type { UserRef } from './dtos.js';
 
-/** Document categories. To add one, add it here (and to the CHECK in a new migration). */
-export const DOCUMENT_CATEGORIES = ['pleadings', 'orders', 'evidence', 'correspondence', 'authority', 'client_documents', 'other'] as const;
-export type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number];
-export const DOCUMENT_CATEGORY_LABELS: Record<DocumentCategory, string> = {
-  pleadings: 'Pleadings',
-  orders: 'Orders & judgments',
-  evidence: 'Evidence',
-  correspondence: 'Correspondence',
-  authority: 'Vakalatnama & authority',
-  client_documents: 'Client documents',
-  other: 'Other',
-};
+/** The starting list of file categories every firm gets. From then on each firm manages its own (Settings → Metadata). */
+export const DOCUMENT_CATEGORY_DEFAULTS = [
+  'Pleadings',
+  'Orders & judgments',
+  'Evidence',
+  'Correspondence',
+  'Vakalatnama & authority',
+  'Client documents',
+  'Other',
+] as const;
 
 /** Allowed file types, by extension (browsers report MIME types unreliably). */
 export const DOCUMENT_TYPES: Record<string, string> = {
@@ -45,7 +43,8 @@ export type DocumentDto = {
   hearingId: string | null;
   hearingDate: string | null;
   name: string;
-  category: DocumentCategory;
+  /** A name from the firm's file categories, or null when none was chosen. */
+  category: string | null;
   mimeType: string;
   sizeBytes: number;
   status: 'pending' | 'available' | 'failed' | 'deleted';

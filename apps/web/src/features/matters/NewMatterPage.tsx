@@ -4,7 +4,6 @@ import {
   CASE_STATUS_LABELS,
   MATTER_STATUSES,
   MATTER_STATUS_LABELS,
-  PRACTICE_AREAS,
   PRIORITIES,
   PRIORITY_LABELS,
   type ClientDto,
@@ -32,6 +31,7 @@ import { api, ApiError } from '../../lib/api.js';
 import { useSession } from '../../lib/auth.js';
 import { fullName } from '../../lib/format.js';
 import { useMembers } from '../../lib/hooks.js';
+import { optionNames, useMetadataOptions } from '../../lib/metadata.js';
 import { ClientPicker, CourtPicker } from './pickers.js';
 
 const formSchema = z.object({
@@ -57,6 +57,7 @@ type FormValues = z.infer<typeof formSchema>;
 
 /** Journey A (PRD §5): client → matter → team → first case, saved in one transaction. */
 export function NewMatterPage() {
+  const practiceAreas = useMetadataOptions('practice_area');
   const me = useSession();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -229,7 +230,7 @@ export function NewMatterPage() {
             label="Practice area"
             options={[
               { value: '', label: 'Not set' },
-              ...PRACTICE_AREAS.map((p) => ({ value: p, label: p })),
+              ...optionNames(practiceAreas.data).map((p) => ({ value: p, label: p })),
             ]}
             {...form.register('practiceArea')}
           />

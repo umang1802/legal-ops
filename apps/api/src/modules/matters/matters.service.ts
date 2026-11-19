@@ -16,6 +16,7 @@ import { conflict, notFound, validationError } from '../../http/errors.js';
 import { assertActiveMembers, iso, likeContains, pageClause } from '../../http/query-helpers.js';
 import { assertMatterVisible, matterVisible } from '../access/matter-scope.js';
 import { recordAudit } from '../audit/audit.service.js';
+import { resolveOption } from '../metadata/metadata.service.js';
 import { createCaseInTx, listCaseSummaries } from '../cases/cases.service.js';
 import { emitEvent } from '../outbox/outbox.service.js';
 import { addTimelineEvent } from '../timeline/timeline.service.js';
@@ -70,6 +71,15 @@ export async function listMatters(
   if (f.priority) filters.push(sql`m.priority = ${f.priority}`);
   if (f.practiceArea) filters.push(sql`m.practice_area = ${f.practiceArea}`);
   if (f.clientId) filters.push(sql`m.client_id = ${f.clientId}`);
+  if (f.courtId) filters.push(sql`EXISTS (SELECT 1 FROM cases cs WHERE cs.matter_id = m.id AND cs.court_id = ${f.courtId})`);
+  if (f.hearing) {
+    // "Today" is the firm's own date, not the server's.
+    const upcoming = (days: number | null) => sql`EXISTS (SELECT 1 FROM hearings h JOIN cases cs ON cs.id = h.case_id
+        WHERE cs.matter_id = m.id AND h.organization_id = m.organization_id AND h.status = 'scheduled'
+          AND h.scheduled_date >= (now() AT TIME ZONE o.timezone)::date
+          ${days === null ? sql.empty : sql`AND h.scheduled_date <= (now() AT TIME ZONE o.timezone)::date + ${days}::int`})`;
+    filters.push(f.hearing === 'none' ? sql`NOT ${upcoming(null)}` : upcoming(f.hearing === 'week' ? 7 : 30));
+  }
   if (f.lawyerId) {
     filters.push(
       sql`EXISTS (SELECT 1 FROM matter_staff s WHERE s.matter_id = m.id AND s.user_id = ${f.lawyerId})`,
@@ -195,6 +205,7 @@ export async function createMatter(
     );
     if (!client) throw validationError('Choose a client', [{ path: 'clientId', message: 'Unknown client' }]);
     if (client.status === 'archived') throw conflict('This client is archived');
+    const practiceArea = await resolveOption(tx, ctx.organizationId, 'practice_area', input.practiceArea, 'practiceArea');
 
     // Assignment plan. Creators who only see assigned matters are always put on the matter,
     // otherwise they'd create something they can immediately no longer see.
@@ -213,7 +224,7 @@ export async function createMatter(
       sql`INSERT INTO matters (organization_id, client_id, title, reference_code, practice_area, status, priority,
                                start_date, internal_notes, client_summary, tags, created_by)
           VALUES (${ctx.organizationId}, ${input.clientId}, ${input.title}, ${input.referenceCode ?? null},
-                  ${input.practiceArea ?? null}, ${input.status}, ${input.priority}, ${input.startDate ?? null},
+                  ${practiceArea}, ${input.status}, ${input.priority}, ${input.startDate ?? null},
                   ${input.internalNotes ?? null}, ${input.clientSummary ?? null}, ${input.tags}, ${ctx.userId})
           RETURNING id`,
     );
@@ -284,6 +295,9 @@ export async function updateMatter(
       Record<string, unknown> & { status: keyof typeof MATTER_STATUS_LABELS; close_date: string | null }
     >(tx, sql`SELECT * FROM matters WHERE id = ${matterId} FOR UPDATE`);
     const changes = { ...input };
+    if (changes.practiceArea !== undefined) {
+      changes.practiceArea = await resolveOption(tx, ctx.organizationId, 'practice_area', changes.practiceArea, 'practiceArea', (before!.practice_area as string | null) ?? null);
+    }
     // Closing a matter stamps today's date (firm timezone) unless one was given.
     if (
       changes.status === 'closed' &&

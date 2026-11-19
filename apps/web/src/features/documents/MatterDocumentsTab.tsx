@@ -1,17 +1,19 @@
-import { DOCUMENT_CATEGORIES, DOCUMENT_CATEGORY_LABELS, type DocumentCategory, type DocumentDto, type MatterDetailDto } from '@legalops/types';
+import type { DocumentDto, MatterDetailDto } from '@legalops/types';
 import { Button, Card, CardHeader, SearchInput, Sheet } from '@legalops/ui';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Upload } from 'lucide-react';
 import { useState } from 'react';
 import { api, qs } from '../../lib/api.js';
 import { canAct, useSession } from '../../lib/auth.js';
+import { useMetadataOptions } from '../../lib/metadata.js';
 import { DocumentList } from './DocumentList.js';
 import { DocumentUploader } from './DocumentUploader.js';
 
 export function MatterDocumentsTab({ matter, uploading, setUploading }: { matter: MatterDetailDto; uploading: boolean; setUploading: (v: boolean) => void }) {
   const me = useSession();
   const isAdmin = me.role === 'owner' || me.role === 'admin';
-  const [category, setCategory] = useState<DocumentCategory | ''>('');
+  const [category, setCategory] = useState('');
+  const categories = useMetadataOptions('document_category');
   const [caseId, setCaseId] = useState('');
   const [search, setSearch] = useState('');
   const [showDeleted, setShowDeleted] = useState(false);
@@ -35,11 +37,13 @@ export function MatterDocumentsTab({ matter, uploading, setUploading }: { matter
       />
       <div className="flex flex-wrap gap-2 border-b border-line px-4 py-3 sm:px-5">
         <SearchInput className="min-w-0 flex-1" placeholder="Search file names" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <select aria-label="Category" value={category} onChange={(e) => setCategory(e.target.value as DocumentCategory | '')} className="h-10 rounded-lg border border-line bg-surface px-3 text-sm">
+        <select aria-label="Category" value={category} onChange={(e) => setCategory(e.target.value)} className="h-10 rounded-lg border border-line bg-surface px-3 text-sm">
           <option value="">All categories</option>
-          {DOCUMENT_CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {DOCUMENT_CATEGORY_LABELS[c]}
+          {/* Archived categories too: files may still carry them. */}
+          {(categories.data ?? []).map((c) => (
+            <option key={c.id} value={c.name}>
+              {c.name}
+              {c.isActive ? '' : ' (archived)'}
             </option>
           ))}
         </select>

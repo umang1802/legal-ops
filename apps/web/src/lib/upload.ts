@@ -1,7 +1,7 @@
-import type { DocumentCategory, DocumentDto, DocumentUploadTicket } from '@legalops/types';
+import type { DocumentDto, DocumentUploadTicket } from '@legalops/types';
 import { api } from './api.js';
 
-export type UploadTarget = { matterId: string; caseId?: string | null; hearingId?: string | null; category: DocumentCategory };
+export type UploadTarget = { matterId: string; caseId?: string | null; hearingId?: string | null; /** A name from the firm's file categories, or null for none. */ category: string | null };
 export class UploadCancelled extends Error {}
 
 const PARALLEL_PARTS = 3;

@@ -95,6 +95,10 @@ export const listMattersSchema = z.object({
   practiceArea: z.string().trim().max(100).optional(),
   lawyerId: uuidSchema.optional(),
   clientId: uuidSchema.optional(),
+  /** A matter with a case in this court. */
+  courtId: uuidSchema.optional(),
+  /** Next hearing: within 7 days, within 30 days, or none scheduled from today. */
+  hearing: z.enum(['week', 'month', 'none']).optional(),
 });
 
 export const partySchema = z

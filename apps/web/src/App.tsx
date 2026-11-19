@@ -1,5 +1,5 @@
 import { lazy } from 'react';
-import { createBrowserRouter, RouterProvider } from 'react-router';
+import { createBrowserRouter, Navigate, RouterProvider } from 'react-router';
 import { AppShell } from './components/layout/AppShell.js';
 import { RedirectIfAuthed, RequireAuth, RequireFeature, RequirePermission } from './components/layout/guards.js';
 import { AcceptInvitePage } from './features/auth/AcceptInvitePage.js';
@@ -23,7 +23,7 @@ import { MorePage } from './features/more/MorePage.js';
 import { FirmSettingsPage } from './features/settings/FirmSettingsPage.js';
 import { MembersPage } from './features/settings/MembersPage.js';
 import { CalendarSyncPage } from './features/settings/CalendarSyncPage.js';
-import { HearingTypesPage } from './features/settings/HearingTypesPage.js';
+import { MetadataPage } from './features/settings/MetadataPage.js';
 import { InvoiceFormatPage } from './features/settings/InvoiceFormatPage.js';
 
 // Route-level code splitting: billing, print views and the calendar load on first visit.
@@ -214,13 +214,14 @@ const router = createBrowserRouter([
             ),
           },
           {
-            path: '/settings/hearing-types',
+            path: '/settings/metadata/:list?',
             element: (
               <RequirePermission permission="organization.manage">
-                <HearingTypesPage />
+                <MetadataPage />
               </RequirePermission>
             ),
           },
+          { path: '/settings/hearing-types', element: <Navigate to="/settings/metadata/hearing_type" replace /> },
           {
             path: '/settings/invoice-format',
             element: (

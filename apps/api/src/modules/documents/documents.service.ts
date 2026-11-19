@@ -4,7 +4,6 @@ import {
   documentExtension,
   MAX_DOCUMENT_BYTES,
   seesAllMatters,
-  type DocumentCategory,
   type DocumentDto,
   type DocumentUploadTicket,
 } from '@legalops/types';
@@ -18,6 +17,7 @@ import { forbidden, notFound, validationError } from '../../http/errors.js';
 import { iso, likeContains } from '../../http/query-helpers.js';
 import { assertMatterVisible, matterVisible } from '../access/matter-scope.js';
 import { recordAudit } from '../audit/audit.service.js';
+import { resolveOption } from '../metadata/metadata.service.js';
 import { addTimelineEvent } from '../timeline/timeline.service.js';
 
 const PART_URL_SECONDS = 60 * 60;
@@ -31,7 +31,7 @@ type Row = {
   hearing_id: string | null;
   hearing_date: string | null;
   name: string;
-  category: DocumentCategory;
+  category: string | null;
   mime_type: string;
   size_bytes: string;
   status: DocumentDto['status'];
@@ -95,6 +95,8 @@ export async function startUpload(
   input: z.output<typeof startDocumentUploadSchema>,
 ): Promise<DocumentUploadTicket> {
   await assertMatterVisible(deps.pool, ctx, input.matterId);
+  // Optional; when given it must be one of the firm's file categories.
+  const category = await resolveOption(deps.pool, ctx.organizationId, 'document_category', input.category, 'category');
   let caseId = input.caseId ?? null;
   if (input.hearingId) {
     const h = await queryOne<{ case_id: string; matter_id: string }>(
@@ -125,7 +127,7 @@ export async function startUpload(
     sql`INSERT INTO documents (id, organization_id, matter_id, case_id, hearing_id, name, category, mime_type, size_bytes,
                                storage_provider, storage_key, upload_id, status, uploaded_by)
         VALUES (${id}, ${ctx.organizationId}, ${input.matterId}, ${caseId}, ${input.hearingId ?? null}, ${input.name},
-                ${input.category}, ${mimeType}, ${input.sizeBytes}, ${deps.storage.name}, ${key}, ${uploadId}, 'pending', ${ctx.userId})`,
+                ${category}, ${mimeType}, ${input.sizeBytes}, ${deps.storage.name}, ${key}, ${uploadId}, 'pending', ${ctx.userId})`,
   );
   return { documentId: id, partSize: DOCUMENT_PART_BYTES, partUrls };
 }

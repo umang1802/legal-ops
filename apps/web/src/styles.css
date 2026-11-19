@@ -47,3 +47,18 @@ body {
   @apply bg-canvas text-ink antialiased;
   -webkit-tap-highlight-color: transparent;
 }
+
+/*
+ * Native dropdowns: the browser's own arrow sits hard against the edge, differs per browser and ignores our padding.
+ * Draw one chevron, inset from the edge, for every plain <select>. The shared SelectField draws its own (it carries
+ * .appearance-none), and multi-selects have no arrow.
+ */
+select:not([multiple]):not(.appearance-none) {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%236b7280' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 7.5 5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.7rem center;
+  background-size: 1rem 1rem;
+  padding-right: 2.25rem;
+}

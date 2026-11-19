@@ -1,6 +1,5 @@
 import {
   CASE_STATUS_LABELS,
-  DOCUMENT_CATEGORY_LABELS,
   type DocumentDto,
   HEARING_STATUS_LABELS,
   MATTER_STAFF_ROLE_LABELS,
@@ -144,7 +143,7 @@ export function MatterHistoryPrintPage() {
                         key={d.id}
                         cells={[
                           d.name,
-                          DOCUMENT_CATEGORY_LABELS[d.category],
+                          d.category ?? '—',
                           [d.caseNumber, d.hearingDate ? `hearing ${formatDate(d.hearingDate)}` : null].filter(Boolean).join(' · ') || '—',
                           `${d.uploadedAt ? formatDate(d.uploadedAt.slice(0, 10)) : '—'}${d.uploadedBy ? ` · ${fullName(d.uploadedBy)}` : ''}`,
                         ]}

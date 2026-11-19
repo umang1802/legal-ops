@@ -1,5 +1,4 @@
 import {
-  EXPENSE_CATEGORIES,
   FEE_AGREEMENT_TYPE_LABELS,
   FEE_AGREEMENT_TYPES,
   INVOICE_DISPLAY_LABELS,
@@ -33,6 +32,7 @@ import { canAct, useSession } from '../../lib/auth.js';
 import { formatDate, todayIn } from '../../lib/format.js';
 import { formatINR, isZero } from '../../lib/money.js';
 import { INVOICE_TONE } from '../../lib/status.js';
+import { optionNames, useMetadataOptions } from '../../lib/metadata.js';
 import { InvoiceRow } from './InvoiceRow.js';
 import { RecordPaymentSheet } from './RecordPaymentSheet.js';
 
@@ -305,8 +305,9 @@ function ExpenseSheet({
 }) {
   const me = useSession();
   const qc = useQueryClient();
+  const expenseCategories = useMetadataOptions('expense_category', { enabled: open });
   const [form, setForm] = useState({
-    category: 'Court fees',
+    category: '',
     amount: '',
     expenseDate: '',
     description: '',
@@ -318,7 +319,7 @@ function ExpenseSheet({
   useEffect(() => {
     if (open) {
       setForm({
-        category: 'Court fees',
+        category: '',
         amount: '',
         expenseDate: todayIn(me.organization.timezone),
         description: '',
@@ -371,7 +372,7 @@ function ExpenseSheet({
             label="Category"
             value={form.category}
             onChange={(e) => setForm({ ...form, category: e.target.value })}
-            options={EXPENSE_CATEGORIES.map((c) => ({ value: c, label: c }))}
+            options={[{ value: '', label: 'Not set' }, ...optionNames(expenseCategories.data).map((c) => ({ value: c, label: c }))]}
           />
           <TextField
             label="Amount (₹)"

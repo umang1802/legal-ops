@@ -5,7 +5,6 @@ import {
   MATTER_STAFF_ROLES,
   MATTER_STATUS_LABELS,
   MATTER_STATUSES,
-  PRACTICE_AREAS,
   PRIORITIES,
   PRIORITY_LABELS,
   type FeatureKey,
@@ -55,6 +54,7 @@ import { canAct, hasFeature, useSession } from '../../lib/auth.js';
 import { formatDate, formatDateTime, fullName, relativeTime, todayIn } from '../../lib/format.js';
 import { useMembers } from '../../lib/hooks.js';
 import { CASE_STATUS_TONE, MATTER_STATUS_TONE, PRIORITY_TONE } from '../../lib/status.js';
+import { optionNames, useMetadataOptions } from '../../lib/metadata.js';
 import { MatterBillingTab } from '../billing/MatterBillingTab.js';
 import { MatterCommunicationTab } from '../communication/MatterCommunicationTab.js';
 import { CaseFormSheet } from '../cases/CaseFormSheet.js';
@@ -459,6 +459,7 @@ function EditMatterSheet({
 }) {
   const qc = useQueryClient();
   const form = useForm<EditValues>({ resolver: zodResolver(editSchema) });
+  const practiceAreas = useMetadataOptions('practice_area', { enabled: open });
   useEffect(() => {
     if (open) {
       form.reset({
@@ -512,7 +513,7 @@ function EditMatterSheet({
             label="Practice area"
             options={[
               { value: '', label: 'Not set' },
-              ...PRACTICE_AREAS.map((p) => ({ value: p, label: p })),
+              ...optionNames(practiceAreas.data, matter.practiceArea).map((p) => ({ value: p, label: p })),
             ]}
             {...form.register('practiceArea')}
           />
